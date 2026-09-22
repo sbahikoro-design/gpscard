@@ -2701,6 +2701,7 @@ async function connexion(){
 }
 function etapePremiere(){
   $("#auEtape1").hidden=true; $("#auEtape2").hidden=false;
+  $("#auValider").hidden=true; $("#auValider2").hidden=false;
   etatAuth("Première connexion : renseignez votre adresse électronique et choisissez votre mot de passe.");
 }
 async function validerPremiere(){
@@ -2717,6 +2718,9 @@ async function validerPremiere(){
 }
 function finConnexion(){
   $("#modaleAuth").hidden=true;
+  $("#auEtape1").hidden=false; $("#auEtape2").hidden=true;
+  $("#auValider").hidden=false; $("#auValider2").hidden=true;
+  $("#auMdp").value=""; $("#auMdp1").value=""; $("#auMdp2").value="";
   definirPortee(COMPTE.niveau,COMPTE.id===undefined?-1:COMPTE.id);
   const a=$("#btnComptes"); if(a) a.hidden=!(COMPTE.role==="admin"||COMPTE.peutCreer);
   journal("connexion",{});

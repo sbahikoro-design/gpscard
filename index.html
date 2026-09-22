@@ -672,7 +672,11 @@ function km(a,b,c,d){const R=6371,r=Math.PI/180,dp=(c-a)*r,dl=(d-b)*r;
 var PORTEE={niveau:"pays", i:-1, lib:"Territoire national"};
 var COMPTE=null;
 var JETON=null;
-var API={url:"", actif:false};            /* service en ligne, réglé par l'administrateur */
+/* Service de comptes et de journalisation — déploiement Apps Script de l'ANADER.
+   Inscrit ici pour que les agents n'aient rien à régler ; la fenêtre Administration
+   permet de le remplacer sur un poste donné. */
+var SERVICE_DEFAUT="https://script.google.com/macros/s/AKfycbwtfIr-kUY_THfa5GQ98bb04ysC0H2r7kT4sBnaMV3JtZuoHbtfoFbPNKn5fqTaFisyiA/exec";
+var API={url:SERVICE_DEFAUT, actif:!!SERVICE_DEFAUT};
 try{var _u=localStorage.getItem("anader_gps_card_api"); if(_u){API.url=_u;API.actif=true;}}catch(e){}
 const NOMS_DR=DR.features.map(f=>f.properties.nom);
 /* les aires protégées sont indexées comme les autres couches surfaciques,
@@ -2846,7 +2850,8 @@ $("#adApiEnr").onclick=()=>{
   const u=$("#adApi").value.trim();
   try{u?localStorage.setItem("anader_gps_card_api",u):localStorage.removeItem("anader_gps_card_api");}catch(e){}
   $("#adEtat").textContent=u?"Serveur enregistré. Rechargez la page pour ouvrir une session.":
-    "Serveur retiré : l’application repasse en mode local.";
+    (SERVICE_DEFAUT?"Réglage effacé : le service d’origine est rétabli au prochain chargement."
+                   :"Serveur retiré : l’application repasse en mode local.");
 };
 reprendreSession();
 

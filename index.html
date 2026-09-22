@@ -2647,10 +2647,15 @@ function appliquerPortee(){
   if(!dansPortee(SEL.k,SEL.i)) choisir(PORTEE.niveau,PORTEE.i);
   else { rendreNiveaux(); cascade(); }
 }
+/* le niveau d'un compte « dg » couvre tout le territoire : c'est le niveau « pays »
+   de l'atlas. Un niveau inconnu retombe sur la couverture nationale plutôt que
+   d'interrompre l'ouverture de session. */
 function definirPortee(niveau,i){
+  if(niveau==="dg"||!niveau||NIVA_K.indexOf(niveau)<0) niveau="pays";
   const e=(niveau==="pays")?{nom:ATLAS.pays.nom}:ent(niveau,i);
-  PORTEE={niveau:niveau,i:i,lib:e?(infoNiv(niveau).lib+" — "+bel(e.nom)):"Territoire national"};
-  if(niveau==="pays") PORTEE.lib="Territoire national";
+  if(niveau!=="pays"&&!e) niveau="pays";
+  PORTEE={niveau:niveau,i:i,
+    lib:(niveau==="pays")?"Territoire national":(infoNiv(niveau).lib+" — "+bel(e.nom))};
   appliquerPortee();
 }
 
@@ -2721,8 +2726,9 @@ function finConnexion(){
   $("#auEtape1").hidden=false; $("#auEtape2").hidden=true;
   $("#auValider").hidden=false; $("#auValider2").hidden=true;
   $("#auMdp").value=""; $("#auMdp1").value=""; $("#auMdp2").value="";
-  definirPortee(COMPTE.niveau,COMPTE.id===undefined?-1:COMPTE.id);
   const a=$("#btnComptes"); if(a) a.hidden=!(COMPTE.role==="admin"||COMPTE.peutCreer);
+  try{ definirPortee(COMPTE.niveau,COMPTE.id===undefined?-1:COMPTE.id); }
+  catch(err){ definirPortee("pays",-1); }
   journal("connexion",{});
 }
 async function reprendreSession(){

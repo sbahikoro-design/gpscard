@@ -298,6 +298,10 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
 .tabComptes td{padding:4px 6px;border-bottom:1px solid #F0EEE7}
 .tabComptes i{color:#A5A294}
 .btn.mini{padding:2px 7px;font-size:10.5px}
+.btn.mini.sup{margin-left:5px;border-color:#D8B4AE;color:#A8362A}
+.btn.mini.sup:hover{background:#FBEDEA;border-color:#A8362A}
+.tabComptes td.act{white-space:nowrap;text-align:right}
+.tabComptes tr.soi td{background:#F5F7F3}
 #cpListe,#cpStats{max-height:38vh;overflow-y:auto;margin-top:9px}
 #cpStats h4{margin:13px 0 4px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--vert)}
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
@@ -550,6 +554,7 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
       <p>Le tableau se filtre par statut, par direction régionale et par recherche libre. L’export CSV reprend le diagnostic complet, coordonnées corrigées comprises. Le bouton <b>Vider</b> efface à la fois les points contrôlés et les couches importées.</p>
 
       <h4>6. Administration</h4>
+      <p>Chaque ligne de la liste porte deux boutons. <b>Réinitialiser</b> délivre un nouveau mot de passe provisoire, à transmettre à l’intéressé, qui devra de nouveau passer par l’écran de première connexion. <b>Supprimer</b> révoque l’accès définitivement : les sessions ouvertes sont fermées, et les comptes que la personne avait elle-même créés vous sont rattachés pour qu’aucun accès ne reste orphelin. L’historique d’activité, lui, est conservé dans le journal. Vous ne pouvez pas supprimer votre propre compte.</p>
       <p>Le bouton <b>Administration</b> demande un code. Il permet de changer le nom de l’application, l’organisation, le sous-titre et les coordonnées de maintenance. Ces éléments sont repris partout, y compris dans le pied des planches et le nom des fichiers exportés.</p>
 
       <h4>7. Comptes et mise en ligne</h4>
@@ -3157,11 +3162,17 @@ async function listerComptes(){
     const d=await appelAPI("listerComptes");
     $("#cpListe").innerHTML='<table class="tabComptes"><thead><tr><th>Nom</th><th>Identifiant</th>'+
       '<th>Portée</th><th>Courriel</th><th>Dernière connexion</th><th></th></tr></thead><tbody>'+
-      d.comptes.map(c=>'<tr><td>'+c.nom+'</td><td>'+c.login+'</td><td>'+c.portee+'</td>'+
+      d.comptes.map(c=>'<tr'+(c.soi?' class="soi"':'')+'><td>'+c.nom+(c.soi?' <i>(vous)</i>':'')+'</td>'+
+        '<td>'+c.login+'</td><td>'+c.portee+'</td>'+
         '<td>'+(c.mail||'<i>non renseigné</i>')+'</td><td>'+(c.derniere||'—')+'</td>'+
-        '<td><button class="btn sec mini" data-l="'+c.login+'">Réinitialiser</button></td></tr>').join("")+
+        '<td class="act"><button class="btn sec mini" data-l="'+c.login+'">Réinitialiser</button>'+
+        (c.soi?'':'<button class="btn sec mini sup" data-sup="'+c.login+'" data-nom="'+
+          String(c.nom).replace(/"/g,"&quot;")+'">Supprimer</button>')+
+        '</td></tr>').join("")+
       '</tbody></table>';
     $("#cpListe").querySelectorAll("button[data-l]").forEach(b=>b.onclick=()=>reinitialiser(b.dataset.l));
+    $("#cpListe").querySelectorAll("button[data-sup]").forEach(b=>
+      b.onclick=()=>supprimerCompte(b.dataset.sup,b.dataset.nom));
   }catch(e){ $("#cpListe").innerHTML='<div class="vide">'+e.message+'</div>'; }
 }
 async function reinitialiser(login){
@@ -3169,6 +3180,18 @@ async function reinitialiser(login){
   try{
     const d=await appelAPI("reinitialiser",{login:login});
     $("#cpEtat").innerHTML='Nouveau mot de passe provisoire pour <b>'+login+'</b> : <b>'+d.motdepasse+'</b>';
+  }catch(e){ $("#cpEtat").textContent=e.message; }
+}
+async function supprimerCompte(login,nom){
+  if(!confirm("Supprimer définitivement le compte « "+nom+" » ("+login+") ?\n\n"+
+    "L’accès est révoqué immédiatement. Les comptes que cette personne avait créés "+
+    "vous sont rattachés. L’historique d’activité est conservé.")) return;
+  try{
+    const d=await appelAPI("supprimerCompte",{login:login});
+    $("#cpEtat").innerHTML='Compte <b>'+login+'</b> supprimé.'+
+      (d.repris?' '+d.repris+' compte'+(d.repris>1?'s':'')+' qu’il avait créé'+(d.repris>1?'s':'')+
+        ' vous '+(d.repris>1?'sont':'est')+' désormais rattaché'+(d.repris>1?'s':'')+'.':'');
+    listerComptes();
   }catch(e){ $("#cpEtat").textContent=e.message; }
 }
 async function statistiques(){

@@ -252,6 +252,8 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
 #lotCible span{font-size:11px;color:var(--txt2)}
 #lotNiveaux{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
 #lotNiveaux .chip i{font-style:normal;opacity:.7;margin-left:3px}
+#cpMulti{max-height:22vh;overflow-y:auto;border:1px solid var(--trait);border-radius:4px;
+  padding:4px 7px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:0 10px}
 #lotListe{max-height:34vh;overflow-y:auto;border:1px solid var(--trait);border-radius:4px;
   padding:5px 7px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:1px 10px}
 .lotL{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 2px;cursor:pointer;
@@ -276,6 +278,30 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
 .impMsg{margin-top:6px;font-size:11px;line-height:1.35;color:var(--vert);
   background:#F1F6EF;border-left:3px solid var(--vert);padding:5px 8px;border-radius:0 3px 3px 0}
 .impMsg.err{color:#A8362A;background:#FBEDEA;border-left-color:#A8362A}
+
+/* ====== cartothèque ====== */
+#modaleCarto{position:fixed;inset:0;background:rgba(22,26,20,.55);display:flex;align-items:center;
+  justify-content:center;z-index:1350;padding:16px}
+#modaleCarto[hidden]{display:none}
+#ctListe{max-height:46vh;overflow-y:auto}
+.ctC{border:1px solid var(--trait);border-left:3px solid var(--vert);border-radius:0 4px 4px 0;
+  padding:8px 11px;margin-bottom:7px;background:#FCFCFA}
+.ctT{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--vert)}
+.ctT .et{font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;
+  border-radius:2px;color:#fff;flex:none}
+.ctT .et.ref{background:var(--or);color:#3A2C06}
+.ctT .et.prod{background:var(--vert)}
+.ctM{font-size:11px;color:var(--txt2);margin-top:2px}
+.ctCom{font-size:12px;margin:5px 0;line-height:1.4}
+.ctP{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--txt2);
+  border-top:1px dotted #E8E5DC;padding-top:5px}
+.ctP span{flex:1}
+#ctDepot{margin-top:13px;border-top:1px solid var(--trait);padding-top:11px}
+#ctEtat{margin-top:9px;font-size:11.5px;color:var(--txt2);background:#F5F7F3;
+  border-radius:3px;padding:7px 10px;min-height:16px}
+textarea#exCom,textarea#ctCom{width:100%;font:inherit;font-size:12px;padding:7px 9px;
+  border:1px solid var(--trait);border-radius:4px;resize:vertical;background:#fff;color:var(--txt)}
+textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
 
 /* ====== session, comptes et statistiques ====== */
 #modaleAuth,#modaleComptes{position:fixed;inset:0;background:rgba(22,26,20,.62);display:flex;
@@ -318,6 +344,7 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
     <span id="sousAppli">Géoportail national de l’ANADER</span></span>
   <span class="horo" id="horo"></span>
   <button class="lienEntete" id="btnManuel">Manuel</button>
+  <button class="lienEntete" id="btnCarto">Cartothèque</button>
   <button class="lienEntete" id="btnComptes" hidden>Comptes</button>
   <button class="lienEntete" id="btnAdmin">Administration</button>
   <button id="burger" aria-label="Afficher le panneau">Panneau</button>
@@ -364,7 +391,7 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
     <div class="fil" id="atFil"></div>
     <div class="chiffres" id="atChiffres"></div>
     <div class="rangee" style="margin-top:11px">
-      <button class="btn" id="btnPng" style="flex:1">Exporter la carte (PNG)</button>
+      <button class="btn" id="btnPng" style="flex:1">Imprimer la carte</button>
       <button class="btn sec" id="btnRecadrer">Recadrer</button>
     </div>
   </div>
@@ -421,6 +448,44 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
     </div>
   </div>
 </div>
+<div id="modaleCarto" hidden>
+  <div class="fenetre large" role="dialog" aria-modal="true" aria-labelledby="ctTitreF">
+    <div class="tete">
+      <h3 id="ctTitreF">Cartothèque</h3>
+      <p>Cartes de référence et cartes imprimées par les centres de coût</p>
+    </div>
+    <div class="corps">
+      <div class="rangee" style="gap:9px;align-items:flex-end">
+        <div style="flex:1"><label class="champ" for="ctRech">Rechercher</label>
+          <input type="text" id="ctRech" placeholder="Entité, auteur, commentaire…" autocomplete="off"></div>
+        <div><label class="champ" for="ctNature">Nature</label>
+          <select id="ctNature">
+            <option value="tout">Toutes les cartes</option>
+            <option value="reference">Cartes de référence</option>
+            <option value="production">Cartes des centres de coût</option>
+          </select></div>
+      </div>
+      <div id="ctCompte" class="compte" style="margin:7px 0"></div>
+      <div id="ctListe"></div>
+      <div id="ctDepot" hidden>
+        <label class="champ">Déposer une carte de référence</label>
+        <div class="opts">
+          <div><label class="champ" for="ctTitre">Intitulé</label>
+            <input type="text" id="ctTitre" maxlength="80" placeholder="Carte de la DR Nord-Ouest 2026"></div>
+          <div><label class="champ" for="ctFichier">Image</label>
+            <input type="file" id="ctFichier" accept="image/png,image/jpeg"></div>
+        </div>
+        <label class="champ" for="ctCom">Commentaire — obligatoire</label>
+        <textarea id="ctCom" rows="2" placeholder="Ce que montre la carte, sa source, sa date…"></textarea>
+        <div class="rangee" style="margin-top:7px"><button class="btn" id="ctEnvoyer">Déposer</button></div>
+        <div id="ctEtat"></div>
+      </div>
+    </div>
+    <div class="pied">
+      <button class="btn sec" id="ctFermer" style="margin-left:auto">Fermer</button>
+    </div>
+  </div>
+</div>
 <div id="modaleComptes" hidden>
   <div class="fenetre large" role="dialog" aria-modal="true" aria-labelledby="cpTitre">
     <div class="tete">
@@ -440,8 +505,9 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
             <input type="text" id="cpLogin" maxlength="40" placeholder="prenom.nom"></div>
           <div><label class="champ" for="cpNiveau">Niveau attribué</label>
             <select id="cpNiveau"></select></div>
-          <div><label class="champ" for="cpEntite">Entité attribuée</label>
-            <select id="cpEntite"></select></div>
+          <div><label class="champ" for="cpEntite" id="cpEntiteL">Entité attribuée</label>
+            <select id="cpEntite"></select>
+            <div id="cpMulti" hidden></div></div>
         </div>
         <label class="coche"><input type="checkbox" id="cpDeleguer">
           Autoriser ce compte à créer des comptes sous sa propre portée</label>
@@ -470,7 +536,7 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
 <div id="modaleLot" hidden>
   <div class="fenetre large" role="dialog" aria-modal="true" aria-labelledby="lotTitre">
     <div class="tete">
-      <h3 id="lotTitre">Éditer plusieurs emprises</h3>
+      <h3 id="lotTitre">Imprimer plusieurs cartes</h3>
       <p>Les cartes retenues sont remises dans un seul dossier compressé</p>
     </div>
     <div class="corps">
@@ -488,7 +554,7 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
       <div id="lotEtat">Les réglages de format, de résolution et de contenu sont ceux de la fenêtre d’export.</div>
     </div>
     <div class="pied">
-      <button class="btn" id="lotGen">Générer le dossier compressé</button>
+      <button class="btn" id="lotGen">Imprimer et regrouper dans un dossier</button>
       <button class="btn sec" id="lotFermer" style="margin-left:auto">Fermer</button>
     </div>
   </div>
@@ -506,6 +572,12 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
       <input type="text" id="adOrg" maxlength="120">
       <label class="champ" for="adSous">Sous-titre du bandeau</label>
       <input type="text" id="adSous" maxlength="140">
+      <label class="champ" for="adSource">Source portée sur les cartes</label>
+      <input type="text" id="adSource" maxlength="60">
+      <label class="champ" for="adAuteur">Auteur porté sur les cartes</label>
+      <input type="text" id="adAuteur" maxlength="80">
+      <label class="champ" for="adAdresse">Adresse publique de la plateforme — imprimée sur chaque carte</label>
+      <input type="text" id="adAdresse" placeholder="https://sbahikoro-design.github.io/gpscard/">
       <label class="champ" for="adMaint">Maintenance — intervenant</label>
       <input type="text" id="adMaint" maxlength="80">
       <label class="champ" for="adTel">Maintenance — contact</label>
@@ -542,7 +614,7 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
       <p>Chaque site ne porte qu’un seul symbole, celui de son rang le plus élevé : le logo cerclé pour la Direction Générale et les chefs-lieux de DR, le carré noir pour les chefs-lieux de région, le rond gris pour les départements, le rond blanc pour les sous-préfectures, le rond jaune pour les CADR. Le bloc <b>Niveaux de visualisation</b> permet d’allumer ou d’éteindre chaque niveau ; la légende se recompose automatiquement.</p>
 
       <h4>4. Éditer une planche PNG</h4>
-      <p>Le bouton <b>Exporter la carte</b> ouvre la fenêtre d’édition. Choisir le format (A4 paysage ou portrait, A3) et la résolution : 150 ppp pour l’écran et le courriel, 200 ppp pour un rapport imprimé, 300 ppp pour une impression fine. La planche reprend les niveaux activés sur la carte, le cartouche de rattachement, les chiffres clés, l’échelle, la rose des vents, le carton de situation et la légende correspondante.</p>
+      <p>Le bouton <b>Imprimer la carte</b> ouvre la fenêtre d’impression. Choisir le format (A4 paysage ou portrait, A3) et la résolution : 150 ppp pour l’écran et le courriel, 200 ppp pour un rapport imprimé, 300 ppp pour une impression fine. La planche reprend les niveaux activés sur la carte, le cartouche de rattachement, les chiffres clés, l’échelle, la rose des vents, le carton de situation et la légende correspondante.</p>
       <p>Le bouton <b>Éditer le niveau inférieur</b> produit d’un coup toutes les cartes filles de la délimitation courante — par exemple les zones d’une DR ou les sous-préfectures d’un département — pour constituer un atlas.</p>
 
       <h4>5. Déposer des données</h4>
@@ -553,16 +625,21 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
       <p><b>Couches cartographiques — GeoJSON, KML, KMZ, GeoPackage.</b> Elles s’ajoutent en habillage, sans toucher au découpage de référence. Chacune apparaît dans la liste sous la zone de dépôt, avec sa couleur, son nombre d’objets, un bouton pour la cadrer et un autre pour la retirer. Un GeoPackage contenant plusieurs couches les charge toutes séparément ; sa lecture demande une connexion au premier usage, le temps de récupérer le module de lecture. Les couches importées figurent aussi sur les planches PNG, avec leur entrée de légende, et peuvent en être écartées par une case de la fenêtre d’export.</p>
       <p>Le tableau se filtre par statut, par direction régionale et par recherche libre. L’export CSV reprend le diagnostic complet, coordonnées corrigées comprises. Le bouton <b>Vider</b> efface à la fois les points contrôlés et les couches importées.</p>
 
-      <h4>6. Administration</h4>
+      <h4>6. Cartothèque</h4>
+      <p>Le bouton <b>Cartothèque</b> du bandeau donne accès à la mémoire des cartes. On y trouve deux natures : les <b>cartes de référence</b>, déposées par l’administration, et les <b>cartes des centres de coût</b>, versées automatiquement à chaque impression. La recherche porte sur l’entité, l’auteur et le commentaire.</p>
+      <p>Toute carte imprimée depuis une session ouverte <b>exige un commentaire</b>, au même titre qu’un tableau : ce que montre la carte, à quoi elle sert, à quelle date les données se rapportent. Sans commentaire, l’impression est refusée. La carte part alors dans votre dossier de téléchargement <i>et</i> dans la cartothèque, où chacun la retrouve avec sa lecture. L’auteur peut retirer ses propres cartes ; l’administrateur, toutes.</p>
+
+      <h4>7. Administration</h4>
       <p>Chaque ligne de la liste porte deux boutons. <b>Réinitialiser</b> délivre un nouveau mot de passe provisoire, à transmettre à l’intéressé, qui devra de nouveau passer par l’écran de première connexion. <b>Supprimer</b> révoque l’accès définitivement : les sessions ouvertes sont fermées, et les comptes que la personne avait elle-même créés vous sont rattachés pour qu’aucun accès ne reste orphelin. L’historique d’activité, lui, est conservé dans le journal. Vous ne pouvez pas supprimer votre propre compte.</p>
       <p>Le bouton <b>Administration</b> demande un code. Il permet de changer le nom de l’application, l’organisation, le sous-titre et les coordonnées de maintenance. Ces éléments sont repris partout, y compris dans le pied des planches et le nom des fichiers exportés.</p>
 
-      <h4>7. Comptes et mise en ligne</h4>
+      <h4>8. Comptes et mise en ligne</h4>
       <p>Hors connexion au service, l’application fonctionne en <b>mode local</b> : accès complet, aucune trace. Une fois l’adresse du service renseignée dans la fenêtre Administration, l’ouverture d’une session devient obligatoire.</p>
+      <p>Les niveaux attribuables suivent la hiérarchie : Direction Générale, Direction Régionale, zone ANADER, CADR. Pour le niveau CADR, la sélection se fait par cases à cocher, un agent pouvant couvrir plusieurs CADR à la fois ; aux autres niveaux, l’entité est unique.</p>
       <p>Chaque compte reçoit une <b>portée</b> — Direction Générale, Direction Régionale, zone ou CADR — et ne voit que cette emprise et ce qu’elle contient : la carte, les listes, la recherche et l’export s’y limitent. Un responsable autorisé à déléguer crée des comptes <b>à l’intérieur de sa propre portée et à un niveau inférieur au sien</b> : un chef de zone crée ses agents CADR, jamais l’inverse.</p>
       <p>À la création, l’application affiche un mot de passe provisoire à transmettre à l’intéressé. À sa première connexion, celui-ci renseigne son adresse électronique et choisit son propre mot de passe. L’onglet Statistiques donne les consultations, les éditions de planches, les emprises les plus demandées et l’activité par compte.</p>
 
-      <h4>8. Limites connues</h4>
+      <h4>9. Limites connues</h4>
       <p>Les limites de CADR ne sont disponibles que pour la Direction Régionale du Nord-Ouest ; le fichier national correspondant n’a pas encore été fourni. Les fonds de plan en ligne nécessitent une connexion : sans réseau, la carte reste utilisable sur fond uni et les planches s’éditent normalement.</p>
 
       <div class="maint">
@@ -579,7 +656,7 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
 <div id="modale" hidden>
   <div class="fenetre" role="dialog" aria-modal="true" aria-labelledby="exTitre">
     <div class="tete">
-      <h3 id="exTitre">Édition de la planche cartographique</h3>
+      <h3 id="exTitre">Imprimer la carte</h3>
       <p>Image PNG prête à insérer dans un rapport ou à imprimer</p>
     </div>
     <div class="corps">
@@ -628,10 +705,12 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
         <label><input type="checkbox" id="exImports" checked> Couches importées</label>
         <label><input type="checkbox" id="exPts" checked> Points contrôlés</label>
       </div>
+      <label class="champ" for="exCom" id="exComL">Commentaire de la carte — obligatoire</label>
+      <textarea id="exCom" rows="2" placeholder="Ce que montre la carte, son usage, la date des données…"></textarea>
       <div id="exEtat">Prêt.</div>
     </div>
     <div class="pied">
-      <button class="btn" id="btnGenerer">Générer le PNG</button>
+      <button class="btn" id="btnGenerer">Imprimer la carte</button>
       <button class="btn sec" id="btnLot">Éditer le niveau inférieur</button>
       <button class="btn sec" id="btnFermer" style="margin-left:auto">Fermer</button>
     </div>
@@ -1381,8 +1460,7 @@ function exporter(){
   a.download=NOM_APPLI_FICHIER()+"_controle_GPS_"+new Date().toISOString().slice(0,10)+".csv";a.click();}
 
 /* ====== branchements ====== */
-$("#horo").textContent=new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})+
-  " · CSQ/SRSEQ · 0779687995";
+$("#horo").textContent="";
 $("#btnVider").onclick=()=>{RES=[];cPoints.clearLayers();cCorr.clearLayers();dessiner();
   if(typeof viderImports==="function") viderImports();};
 $("#btnCsv").onclick=exporter;
@@ -1489,7 +1567,17 @@ function contenu(k,i){
   const rg=NIVA_K.indexOf(k)-1;
   const dedans=t=>k==="pays"?true:(t[rg]===i);
   ATLAS.loc.forEach((t,j)=>{ if(dedans(t)){ r.loc++; if(LOCALITES[j][0]) r.hab++; } });
-  r.chef=chefsRetenus(()=>true,c=>dedans(c.slice(3))).length;
+  /* un chef-lieu par rang, strictement dans l'emprise : le nombre de chefs-lieux
+     de sous-préfecture doit coïncider avec le nombre de sous-préfectures */
+  /* on compte les sous-préfectures de l'emprise effectivement dotées d'un siège :
+     le total ne peut donc pas dépasser le nombre de sous-préfectures affiché */
+  const spVues=new Set();
+  (CHEFS.sp||[]).forEach(c=>{
+    if(!dedans(c.slice(3))) return;
+    const j=c[7];
+    if(j>=0&&ATLAS.niveaux.sp[j]&&ATLAS.niveaux.sp[j].nom) spVues.add(j);
+  });
+  r.chef=spVues.size;
   return r;
 }
 function chefsDe(k,i){
@@ -2367,25 +2455,14 @@ async function planche(sel,o){
   const yp=H-M-mm(1);
   ctx.strokeStyle="#D4AF37";ctx.lineWidth=mm(.4);
   ctx.beginPath();ctx.moveTo(M,yp-mm(4.6));ctx.lineTo(W-M,yp-mm(4.6));ctx.stroke();
-  const sigle=NOM_APPLI()+" · "+ORG_APPLI()+" — "+
-    new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"})+" · 0779687995";
-  police(2.5,"bold"); ctx.fillStyle="#1B5E20"; ctx.textAlign="right";
-  const lSigle=ctx.measureText(sigle).width;
-  ctx.fillText(sigle,W-M,yp-mm(1.4));
-  police(2.3,""); ctx.fillStyle="#6B6F66"; ctx.textAlign="left";
-  let src="Sources : découpage ANADER (zones, CADR) · découpage administratif national · localités OpenStreetMap · "+
-    "limite d’État ANADER · "+
-    (o.fond==="aucun"?"sans fond de plan"
-      :(fondOk?"fond de plan "+FONDS_PNG[fondUse].lib
-        :"fond de plan indisponible au moment de l’édition"));
-  const dispoSrc=W-2*M-lSigle-mm(6);
-  let tSrc=2.3;
-  while(ctx.measureText(src).width>dispoSrc&&tSrc>1.5){tSrc-=.1;police(tSrc,"");}
-  if(ctx.measureText(src).width>dispoSrc){
-    while(ctx.measureText(src+"…").width>dispoSrc&&src.length>24) src=src.slice(0,-3);
-    src+="…";
-  }
-  ctx.fillText(src,M,yp-mm(1.4));
+  police(2.6,"bold"); ctx.fillStyle="#1B5E20"; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+  ctx.fillText("Source : "+SOURCE_CARTE(),M,yp-mm(1.4));
+  police(2.6,"bold"); ctx.textAlign="right";
+  ctx.fillText("Auteur : "+AUTEUR_CARTE(),W-M,yp-mm(1.4));
+  const adr=ADRESSE_PLATEFORME();
+  if(adr){ police(2.4,""); ctx.fillStyle="#6B6F66"; ctx.textAlign="center";
+    ctx.fillText(adr,W/2,yp-mm(1.4)); }
+  ctx.textAlign="left";
   return cv;
 }
 
@@ -2403,15 +2480,29 @@ function telecharger(cv,nom){
 }
 async function exporterPng(){
   const b=$("#btnGenerer"), o=optionsExport();
+  const com=($("#exCom")?$("#exCom").value:"").trim();
+  /* toute carte imprimée depuis un centre de coût part avec sa lecture */
+  if(API.actif&&JETON&&com.length<10){
+    etat("Le commentaire est obligatoire : décrivez en une phrase ce que montre cette carte.");
+    const z=$("#exCom"); if(z){z.classList.add("manque");z.focus();}
+    return;
+  }
   b.disabled=true; etat("Assemblage du fond de plan…");
   try{
     const cv=await planche(SEL,o);
     const dpiR=dpiUtile(FORMATS[o.format],o.dpi);
     etat("Écriture du fichier"+(dpiR<o.dpi?" — résolution ramenée à "+dpiR+" ppp pour ce format":"")+"…");
     await telecharger(cv,nomFichier(SEL));
-    etat("Carte enregistrée : "+nomFichier(SEL));
     journal("export",{niveau:SEL.k,entite:ent(SEL.k,SEL.i).nom,format:o.format,resolution:dpiR});
-  }catch(err){etat("Édition impossible : "+err.message);}
+    etat("Carte enregistrée : "+nomFichier(SEL));
+    if(API.actif&&JETON){
+      etat("Carte enregistrée · dépôt dans la cartothèque…");
+      try{ await deposerCarteImprimee(cv,SEL,o,com);
+        etat("Carte enregistrée et versée à la cartothèque.");
+        if($("#exCom")) $("#exCom").value="";
+      }catch(e){ etat("Carte enregistrée, mais le dépôt a échoué : "+e.message); }
+    }
+  }catch(err){etat("Impression impossible : "+err.message);}
   b.disabled=false;
 }
 function etat(t){const e=$("#exEtat"); if(e) e.textContent=t;}
@@ -2419,12 +2510,19 @@ function etat(t){const e=$("#exEtat"); if(e) e.textContent=t;}
 /* ---------- branchements de la fenêtre d’export ---------- */
 function ouvrirExport(){
   const en=enfants(SEL.k,SEL.i);
+  const lib={pays:"du territoire national",dr:"de la Direction Régionale",zone:"de la zone",
+    region:"de la région",dept:"du département",sp:"de la sous-préfecture",
+    cadr:"du CADR",loc:"de la localité"}[SEL.k]||"";
+  $("#exTitre").textContent="Imprimer la carte "+lib;
   $("#exCible").innerHTML='<b>'+titre(ent(SEL.k,SEL.i))+'</b><span>'+
     chaine(SEL.k,SEL.i).map(x=>bel(x.nom)).join(" › ")+'</span>';
   const dispo=niveauxInferieurs(SEL.k,SEL.i);
-  $("#btnLot").textContent=dispo.length?"Éditer plusieurs emprises…":"Aucune subdivision à éditer";
+  $("#btnLot").textContent=dispo.length?"Imprimer plusieurs cartes…":"Aucune subdivision à imprimer";
   $("#btnLot").disabled=!dispo.length;
-  etat("Prêt.");
+  const cl=$("#exComL"), cz=$("#exCom");
+  if(cl&&cz){ const v=!!(API.actif&&JETON); cl.hidden=!v; cz.hidden=!v;
+    cz.classList.remove("manque"); }
+  etat(API.actif&&JETON?"Un commentaire est exigé avant impression.":"Prêt.");
   $("#modale").hidden=false;
 }
 $("#atRech").oninput=e=>rechercher(e.target.value);
@@ -2589,6 +2687,7 @@ $("#lotGen").onclick=genererLot;
    ================================================================================== */
 const IDENT_DEF={nom:"WebMapANADER",org:"Agence Nationale d’Appui au Développement Rural",
   sous:"Géoportail national de l’ANADER",
+  source:"ANADER", auteur:"DMAOPAG/DGRM/Cellule Géomatique", adresse:"",
   contact:"0779687995", mainteneur:"BSINALY — Sinaly BAHIKORO"};
 const CODE_ADMIN="BSDIOM@ANADER2026";
 let IDENT=Object.assign({},IDENT_DEF);
@@ -2599,6 +2698,9 @@ function enregistrerIdent(){
 }
 const NOM_APPLI=()=>IDENT.nom||IDENT_DEF.nom;
 const ORG_APPLI=()=>IDENT.org||IDENT_DEF.org;
+const SOURCE_CARTE=()=>IDENT.source||IDENT_DEF.source;
+const AUTEUR_CARTE=()=>IDENT.auteur||IDENT_DEF.auteur;
+const ADRESSE_PLATEFORME=()=>IDENT.adresse||"";
 const NOM_APPLI_FICHIER=()=>String(NOM_APPLI()).toUpperCase()
   .normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Z0-9]+/g,"_").replace(/^_|_$/g,"");
 function appliquerIdent(){
@@ -2623,6 +2725,8 @@ function ouvrirAdmin(){
   $("#adNom").value=IDENT.nom; $("#adOrg").value=IDENT.org;
   $("#adSous").value=IDENT.sous; $("#adMaint").value=IDENT.mainteneur;
   $("#adTel").value=IDENT.contact;
+  $("#adSource").value=IDENT.source||""; $("#adAuteur").value=IDENT.auteur||"";
+  $("#adAdresse").value=IDENT.adresse||"";
   $("#adEtat").textContent="Session administrateur ouverte.";
   $("#modaleAdmin").hidden=false;
 }
@@ -2632,6 +2736,9 @@ function enregistrerAdmin(){
   IDENT.sous=$("#adSous").value.trim();
   IDENT.mainteneur=$("#adMaint").value.trim()||IDENT_DEF.mainteneur;
   IDENT.contact=$("#adTel").value.trim()||IDENT_DEF.contact;
+  IDENT.source=$("#adSource").value.trim()||IDENT_DEF.source;
+  IDENT.auteur=$("#adAuteur").value.trim()||IDENT_DEF.auteur;
+  IDENT.adresse=$("#adAdresse").value.trim();
   enregistrerIdent(); appliquerIdent();
   $("#adEtat").textContent="Enregistré. Le nom est repris dans le bandeau, les planches PNG et les fichiers exportés.";
 }
@@ -2966,12 +3073,13 @@ function portagePays(){return PORTEE.niveau==="pays";}
 /* une entité est visible si elle est la portée elle-même ou lui appartient */
 function dansPortee(k,i){
   if(portagePays()) return true;
-  if(k===PORTEE.niveau) return i===PORTEE.i;
+  const ids=(PORTEE.ids&&PORTEE.ids.length)?PORTEE.ids:[PORTEE.i];
+  if(k===PORTEE.niveau) return ids.indexOf(i)>=0;
   if(k==="loc"){const r=ATLAS.loc[i]||[];
     const rg={dr:0,zone:1,region:2,dept:3,sp:4,cadr:5}[PORTEE.niveau];
-    return rg!==undefined&&r[rg]===PORTEE.i;}
+    return rg!==undefined&&ids.indexOf(r[rg])>=0;}
   const p=(ATLAS.niveaux[k]&&ATLAS.niveaux[k][i]&&ATLAS.niveaux[k][i].p)||{};
-  return p[PORTEE.niveau]===PORTEE.i;
+  return ids.indexOf(p[PORTEE.niveau])>=0;
 }
 /* les ascendants restent lisibles dans le fil, sans être sélectionnables */
 function ascendantDePortee(k,i){
@@ -3004,12 +3112,16 @@ function appliquerPortee(){
 /* le niveau d'un compte « dg » couvre tout le territoire : c'est le niveau « pays »
    de l'atlas. Un niveau inconnu retombe sur la couverture nationale plutôt que
    d'interrompre l'ouverture de session. */
-function definirPortee(niveau,i){
+function definirPortee(niveau,i,ids){
   if(niveau==="dg"||!niveau||NIVA_K.indexOf(niveau)<0) niveau="pays";
+  const liste=(ids&&ids.length)?ids.filter(j=>ent(niveau,j)):[];
+  if(liste.length) i=liste[0];
   const e=(niveau==="pays")?{nom:ATLAS.pays.nom}:ent(niveau,i);
   if(niveau!=="pays"&&!e) niveau="pays";
-  PORTEE={niveau:niveau,i:i,
-    lib:(niveau==="pays")?"Territoire national":(infoNiv(niveau).lib+" — "+bel(e.nom))};
+  const n=liste.length;
+  PORTEE={niveau:niveau,i:i,ids:liste,
+    lib:(niveau==="pays")?"Territoire national"
+      :(infoNiv(niveau).lib+" — "+bel(e.nom)+(n>1?" et "+(n-1)+" autre"+(n>2?"s":""):""))};
   appliquerPortee();
 }
 
@@ -3081,7 +3193,7 @@ function finConnexion(){
   $("#auValider").hidden=false; $("#auValider2").hidden=true;
   $("#auMdp").value=""; $("#auMdp1").value=""; $("#auMdp2").value="";
   const a=$("#btnComptes"); if(a) a.hidden=!(COMPTE.role==="admin"||COMPTE.peutCreer);
-  try{ definirPortee(COMPTE.niveau,COMPTE.id===undefined?-1:COMPTE.id); }
+  try{ definirPortee(COMPTE.niveau,COMPTE.id===undefined?-1:COMPTE.id,COMPTE.ids); }
   catch(err){ definirPortee("pays",-1); }
   journal("connexion",{});
 }
@@ -3135,15 +3247,34 @@ function majFormulaireCompte(){
 }
 function majEntites(){
   const k=$("#cpNiveau").value, l=entitesDelegables(k);
-  $("#cpEntite").innerHTML=l.map(o=>'<option value="'+o[0]+'">'+bel(o[1])+'</option>').join("")
-    ||'<option value="-1">— aucune entité disponible —</option>';
-  $("#cpEntite").disabled=(k==="dg");
+  const multi=(k==="cadr");          /* un agent peut couvrir plusieurs CADR */
+  $("#cpEntiteL").textContent=multi?"CADR couverts — plusieurs choix possibles":"Entité attribuée";
+  $("#cpEntite").hidden=multi;
+  $("#cpMulti").hidden=!multi;
+  if(multi){
+    $("#cpMulti").innerHTML=l.length?l.map(o=>
+      '<label class="lotL"><input type="checkbox" value="'+o[0]+'"><span>'+bel(o[1])+'</span></label>').join("")
+      :'<div class="vide">Aucun CADR disponible dans votre portée.</div>';
+  } else {
+    $("#cpEntite").innerHTML=l.map(o=>'<option value="'+o[0]+'">'+bel(o[1])+'</option>').join("")
+      ||'<option value="-1">— aucune entité disponible —</option>';
+    $("#cpEntite").disabled=(k==="dg");
+  }
 }
 async function creerCompte(){
-  const sel=$("#cpEntite");
+  const k=$("#cpNiveau").value, sel=$("#cpEntite");
+  let ids=[], libelle="";
+  if(k==="cadr"){
+    const coches=[...$("#cpMulti").querySelectorAll("input:checked")];
+    ids=coches.map(c=>+c.value);
+    libelle=coches.map(c=>c.nextElementSibling.textContent).join(", ").slice(0,120);
+    if(!ids.length){$("#cpEtat").textContent="Sélectionnez au moins un CADR.";return;}
+  } else {
+    ids=[+sel.value];
+    libelle=sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:"";
+  }
   const charge={nom:$("#cpNom").value.trim(), login:$("#cpLogin").value.trim(),
-    niveau:$("#cpNiveau").value, id:+sel.value,
-    libelle:sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:"",
+    niveau:k, id:ids[0], ids:ids, libelle:libelle,
     peutCreer:$("#cpDeleguer").checked};
   if(!charge.nom||!charge.login){$("#cpEtat").textContent="Nom et identifiant sont requis.";return;}
   $("#cpCreer").disabled=true; $("#cpEtat").textContent="Création…";
@@ -3235,6 +3366,89 @@ $("#adApiEnr").onclick=()=>{
     (SERVICE_DEFAUT?"Réglage effacé : le service d’origine est rétabli au prochain chargement."
                    :"Serveur retiré : l’application repasse en mode local.");
 };
+
+/* ==================================================================================
+   CARTOTHÈQUE — mémoire des cartes éditées
+   Toute carte imprimée depuis un centre de coût y est déposée avec son commentaire ;
+   l'administration y verse les cartes de référence.
+   ================================================================================== */
+let CARTES=[];
+function ouvrirCartotheque(){
+  if(!API.actif||!JETON){
+    alert("La cartothèque nécessite une session ouverte sur le service en ligne.");
+    return;
+  }
+  $("#ctDepot").hidden=!(COMPTE&&COMPTE.role==="admin");
+  $("#modaleCarto").hidden=false;
+  listerCartes();
+}
+async function listerCartes(){
+  $("#ctListe").innerHTML='<div class="vide">Chargement…</div>';
+  try{
+    const d=await appelAPI("listerCartes",{nature:$("#ctNature").value,
+      recherche:$("#ctRech").value.trim()});
+    CARTES=d.cartes;
+    $("#ctCompte").textContent=d.cartes.length+" carte"+(d.cartes.length>1?"s":"")+
+      " sur "+d.total+" dans la cartothèque";
+    if(!d.cartes.length){$("#ctListe").innerHTML='<div class="vide">Aucune carte ne correspond.</div>';return;}
+    $("#ctListe").innerHTML=d.cartes.map(c=>
+      '<div class="ctC">'+
+      '<div class="ctT"><span class="et '+(c.nature==="reference"?"ref":"prod")+'">'+
+        (c.nature==="reference"?"Référence":"Centre de coût")+'</span>'+
+        '<b>'+(c.titre||c.entite||"Carte")+'</b></div>'+
+      '<div class="ctM">'+(c.niveau?infoNiv(c.niveau)?infoNiv(c.niveau).lib:c.niveau:"")+
+        (c.entite?' — '+bel(c.entite):'')+' · '+(c.format||'')+' '+(c.resolution?c.resolution+' ppp':'')+'</div>'+
+      '<div class="ctCom">'+(c.commentaire||'')+'</div>'+
+      '<div class="ctP"><span>'+c.auteur+' · '+c.portee+' · '+c.date+'</span>'+
+        (c.lien?'<a class="btn sec mini" href="'+c.lien+'" target="_blank" rel="noopener">Ouvrir</a>':'')+
+        ((c.sien||(COMPTE&&COMPTE.role==="admin"))?
+          '<button class="btn sec mini sup" data-sup="'+c.id+'">Retirer</button>':'')+
+      '</div></div>').join("");
+    $("#ctListe").querySelectorAll("button[data-sup]").forEach(b=>b.onclick=()=>retirerCarte(b.dataset.sup));
+  }catch(e){ $("#ctListe").innerHTML='<div class="vide">'+e.message+'</div>'; }
+}
+async function retirerCarte(id){
+  if(!confirm("Retirer cette carte de la cartothèque ?")) return;
+  try{ await appelAPI("supprimerCarte",{id:id}); listerCartes(); }
+  catch(e){ alert(e.message); }
+}
+/* dépôt d'une carte de référence, réservé à l'administration */
+async function deposerReference(){
+  const f=$("#ctFichier").files[0], com=$("#ctCom").value.trim();
+  if(!f){ $("#ctEtat").textContent="Choisissez une image."; return; }
+  if(com.length<10){ $("#ctEtat").textContent="Le commentaire est obligatoire (dix caractères au moins)."; return; }
+  $("#ctEnvoyer").disabled=true; $("#ctEtat").textContent="Dépôt en cours…";
+  try{
+    const b64=await new Promise((res,rej)=>{const l=new FileReader();
+      l.onerror=()=>rej(new Error("fichier illisible"));
+      l.onload=()=>res(String(l.result).split(",")[1]); l.readAsDataURL(f);});
+    await appelAPI("deposerCarte",{titre:$("#ctTitre").value.trim()||f.name,
+      commentaire:com, nature:"reference", fichier:f.name, donnees:b64});
+    $("#ctEtat").textContent="Carte de référence déposée.";
+    $("#ctTitre").value=""; $("#ctCom").value=""; $("#ctFichier").value="";
+    listerCartes();
+  }catch(e){ $("#ctEtat").textContent=e.message; }
+  $("#ctEnvoyer").disabled=false;
+}
+/* dépôt automatique d'une carte imprimée */
+async function deposerCarteImprimee(cv,sel,o,commentaire){
+  if(!API.actif||!JETON) return;
+  const b=await new Promise(r=>cv.toBlob(r,"image/png"));
+  const b64=await new Promise((res,rej)=>{const l=new FileReader();
+    l.onerror=()=>rej(new Error("image illisible"));
+    l.onload=()=>res(String(l.result).split(",")[1]); l.readAsDataURL(b);});
+  await appelAPI("deposerCarte",{titre:titre(ent(sel.k,sel.i)),
+    niveau:sel.k, entite:ent(sel.k,sel.i).nom, commentaire:commentaire,
+    nature:"production", format:o.format, resolution:dpiUtile(FORMATS[o.format],o.dpi),
+    fichier:nomFichier(sel), donnees:b64});
+}
+$("#btnCarto").onclick=ouvrirCartotheque;
+$("#ctFermer").onclick=()=>{$("#modaleCarto").hidden=true;};
+$("#ctNature").onchange=listerCartes;
+$("#ctRech").oninput=()=>{clearTimeout(window._ctT);window._ctT=setTimeout(listerCartes,350);};
+$("#ctEnvoyer").onclick=deposerReference;
+$("#modaleCarto").addEventListener("click",e=>{if(e.target.id==="modaleCarto")$("#modaleCarto").hidden=true;});
+
 reprendreSession();
 
 </script></body></html>

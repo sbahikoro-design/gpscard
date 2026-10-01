@@ -614,7 +614,7 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
       <p>Chaque site ne porte qu’un seul symbole, celui de son rang le plus élevé : le logo cerclé pour la Direction Générale et les chefs-lieux de DR, le carré noir pour les chefs-lieux de région, le rond gris pour les départements, le rond blanc pour les sous-préfectures, le rond jaune pour les CADR. Le bloc <b>Niveaux de visualisation</b> permet d’allumer ou d’éteindre chaque niveau ; la légende se recompose automatiquement.</p>
 
       <h4>4. Éditer une planche PNG</h4>
-      <p>Le bouton <b>Imprimer la carte</b> ouvre la fenêtre d’impression. Choisir le format (A4 paysage ou portrait, A3) et la résolution : 150 ppp pour l’écran et le courriel, 200 ppp pour un rapport imprimé, 300 ppp pour une impression fine. La planche reprend les niveaux activés sur la carte, le cartouche de rattachement, les chiffres clés, l’échelle, la rose des vents, le carton de situation et la légende correspondante.</p>
+      <p>Le bouton <b>Imprimer la carte</b> ouvre la fenêtre d’impression. Choisir le format de feuille, de l’A5 à l’A0, en paysage ou en portrait, puis la résolution : 150 ppp pour l’écran et le courriel, 200 ppp pour un rapport imprimé, 300 ppp pour une impression fine. Le fichier sort en <b>PNG</b>, image à insérer dans un document, ou en <b>PDF</b>, page à la taille exacte du format retenu — un A1 imprimé depuis ce PDF sortira à ses 841 × 594 mm sans réglage particulier chez l’imprimeur. La planche reprend les niveaux activés sur la carte, le cartouche de rattachement, les chiffres clés, l’échelle, la rose des vents, le carton de situation et la légende correspondante.</p>
       <p>Le bouton <b>Éditer le niveau inférieur</b> produit d’un coup toutes les cartes filles de la délimitation courante — par exemple les zones d’une DR ou les sous-préfectures d’un département — pour constituer un atlas.</p>
 
       <h4>5. Déposer des données</h4>
@@ -644,8 +644,8 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
 
       <div class="maint">
         <b>Maintenance et évolutions</b>
-        <span id="maintNom">BSINALY — Sinaly BAHIKORO</span>
-        <a id="maintTel" href="tel:0779687995">0779687995</a>
+        <span id="maintNom">Équipe de développement</span>
+        <a id="maintTel" href="#"></a>
       </div>
     </div>
     <div class="pied">
@@ -682,6 +682,11 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
             <option value="150">150 ppp — écran et courriel</option>
             <option value="200" selected>200 ppp — rapport imprimé</option>
             <option value="300">300 ppp — impression fine</option>
+          </select></div>
+        <div><label class="champ" for="exSortie">Format du fichier</label>
+          <select id="exSortie">
+            <option value="png" selected>PNG — image</option>
+            <option value="pdf">PDF — à la taille exacte du format</option>
           </select></div>
         <div><label class="champ" for="exFond">Fond de plan</label>
           <select id="exFond">
@@ -1919,7 +1924,8 @@ function optionsExport(){
     grille:g("exGrille").checked, localites:g("exLoc").checked, chefs:g("exChef").checked,
     points:g("exPts").checked, situation:g("exSitu").checked, composition:g("exComp").checked,
     aplats:g("exAplats").checked, voisins:g("exVoisins").checked,
-    imports:g("exImports")?g("exImports").checked:true};
+    imports:g("exImports")?g("exImports").checked:true,
+    sortie:g("exSortie")?g("exSortie").value:"png"};
 }
 /* niveaux à faire figurer sur une planche, selon l'emprise éditée */
 const PLANCHE_NIV={
@@ -2461,7 +2467,7 @@ async function planche(sel,o){
   ctx.fillText("Auteur : "+AUTEUR_CARTE(),W-M,yp-mm(1.4));
   const adr=ADRESSE_PLATEFORME();
   if(adr){ police(2.4,""); ctx.fillStyle="#6B6F66"; ctx.textAlign="center";
-    ctx.fillText(adr,W/2,yp-mm(1.4)); }
+    ctx.fillText(NOM_APPLI()+" · "+adr.replace(/^https?:\/\//,""),W/2,yp-mm(1.4)); }
   ctx.textAlign="left";
   return cv;
 }
@@ -2492,12 +2498,13 @@ async function exporterPng(){
     const cv=await planche(SEL,o);
     const dpiR=dpiUtile(FORMATS[o.format],o.dpi);
     etat("Écriture du fichier"+(dpiR<o.dpi?" — résolution ramenée à "+dpiR+" ppp pour ce format":"")+"…");
-    await telecharger(cv,nomFichier(SEL));
+    const f=await fichierSortie(cv,o,SEL);
+    await enregistrerBlob(f.blob,f.nom);
     journal("export",{niveau:SEL.k,entite:ent(SEL.k,SEL.i).nom,format:o.format,resolution:dpiR});
-    etat("Carte enregistrée : "+nomFichier(SEL));
+    etat("Carte enregistrée : "+f.nom);
     if(API.actif&&JETON){
       etat("Carte enregistrée · dépôt dans la cartothèque…");
-      try{ await deposerCarteImprimee(cv,SEL,o,com);
+      try{ await deposerCarteImprimee(f,SEL,o,com);
         etat("Carte enregistrée et versée à la cartothèque.");
         if($("#exCom")) $("#exCom").value="";
       }catch(e){ etat("Carte enregistrée, mais le dépôt a échoué : "+e.message); }
@@ -2655,7 +2662,8 @@ async function genererLot(){
     etatLot("Édition "+(n+1)+" / "+liste.length+" — "+bel(ent(LOT.niv,liste[n]).nom));
     try{
       const cv=await planche({k:LOT.niv,i:liste[n]},o);
-      fichiers.push({nom:nomFichier({k:LOT.niv,i:liste[n]}),data:await versOctets(cv)});
+      const f=await fichierSortie(cv,o,{k:LOT.niv,i:liste[n]});
+      fichiers.push({nom:f.nom,data:new Uint8Array(await f.blob.arrayBuffer())});
     }catch(err){echecs++;}
     await new Promise(r=>setTimeout(r,0));
   }
@@ -2688,11 +2696,13 @@ $("#lotGen").onclick=genererLot;
 const IDENT_DEF={nom:"WebMapANADER",org:"Agence Nationale d’Appui au Développement Rural",
   sous:"Géoportail national de l’ANADER",
   source:"ANADER", auteur:"DMAOPAG/DGRM/Cellule Géomatique", adresse:"",
-  contact:"0779687995", mainteneur:"BSINALY — Sinaly BAHIKORO"};
+  contact:"", mainteneur:"Équipe de développement"};
 const CODE_ADMIN="BSDIOM@ANADER2026";
 let IDENT=Object.assign({},IDENT_DEF);
 try{const j=localStorage.getItem("anader_gps_card_identite");
     if(j) IDENT=Object.assign({},IDENT_DEF,JSON.parse(j));}catch(e){}
+/* reprise des réglages antérieurs : la signature nominative laisse place à l'équipe */
+if(/BSINALY|BAHIKORO/i.test(IDENT.mainteneur||"")){IDENT.mainteneur=IDENT_DEF.mainteneur;IDENT.contact="";}
 function enregistrerIdent(){
   try{localStorage.setItem("anader_gps_card_identite",JSON.stringify(IDENT));}catch(e){}
 }
@@ -2711,8 +2721,9 @@ function appliquerIdent(){
   if(s) s.textContent=IDENT.sous||"";
   const m=$("#maintNom"), c=$("#maintTel");
   if(m) m.textContent=IDENT.mainteneur||IDENT_DEF.mainteneur;
-  if(c){c.textContent=IDENT.contact||IDENT_DEF.contact;
-        c.href="tel:"+String(IDENT.contact||"").replace(/\s/g,"");}
+  if(c){const tel=String(IDENT.contact||"").trim();
+        c.textContent=tel; c.hidden=!tel;
+        c.href=tel?("tel:"+tel.replace(/\s/g,"")):"#";}
 }
 let ADMIN_OUVERT=false;
 function ouvrirAdmin(){
@@ -3367,6 +3378,72 @@ $("#adApiEnr").onclick=()=>{
                    :"Serveur retiré : l’application repasse en mode local.");
 };
 
+
+/* ==================================================================================
+   SORTIE PDF — une page, à la taille exacte du format choisi
+   Le PDF est écrit ici même : pas de bibliothèque, pas de connexion. L'image est
+   intégrée en JPEG de haute qualité, ce qui garde la mémoire raisonnable même en A0.
+   ================================================================================== */
+function pdfDepuisJpeg(octets,W,H,largeurMm,hauteurMm,titre){
+  const enc=new TextEncoder();
+  const pt=m=>Math.round(m*72/25.4*100)/100;             /* millimètres -> points */
+  const lp=pt(largeurMm), hp=pt(hauteurMm);
+  const esc=t=>String(t||"").replace(/[\\()]/g,"\\$&");
+  const flux="q "+lp+" 0 0 "+hp+" 0 0 cm /I0 Do Q";
+  const objets=[
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "+lp+" "+hp+"] "+
+      "/Resources << /XObject << /I0 5 0 R >> >> /Contents 4 0 R >>",
+    "<< /Length "+flux.length+" >>\nstream\n"+flux+"\nendstream",
+    null,                                                 /* l'image, en binaire */
+    "<< /Title ("+esc(titre)+") /Producer (WebMapANADER) /CreationDate (D:"+
+      new Date().toISOString().replace(/[-:]/g,"").slice(0,15)+"Z) >>"
+  ];
+  const morceaux=[], offsets=[]; let taille=0;
+  const pousser=u=>{morceaux.push(u);taille+=u.length;};
+  pousser(enc.encode("%PDF-1.4\n%\u00E2\u00E3\u00CF\u00D3\n"));
+  objets.forEach((o,i)=>{
+    offsets[i]=taille;
+    if(i===4){
+      pousser(enc.encode("5 0 obj\n<< /Type /XObject /Subtype /Image /Width "+W+
+        " /Height "+H+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+
+        octets.length+" >>\nstream\n"));
+      pousser(octets);
+      pousser(enc.encode("\nendstream\nendobj\n"));
+    } else {
+      pousser(enc.encode((i+1)+" 0 obj\n"+o+"\nendobj\n"));
+    }
+  });
+  const debutXref=taille;
+  let xref="xref\n0 "+(objets.length+1)+"\n0000000000 65535 f \n";
+  offsets.forEach(o=>{xref+=String(o).padStart(10,"0")+" 00000 n \n";});
+  xref+="trailer\n<< /Size "+(objets.length+1)+" /Root 1 0 R /Info 6 0 R >>\nstartxref\n"+
+    debutXref+"\n%%EOF\n";
+  pousser(enc.encode(xref));
+  return new Blob(morceaux,{type:"application/pdf"});
+}
+/* fabrique le fichier dans le format demandé et renvoie de quoi l'enregistrer */
+async function fichierSortie(cv,o,sel){
+  const base=nomFichier(sel).replace(/\.png$/i,"");
+  if((o.sortie||"png")==="pdf"){
+    const F=FORMATS[o.format];
+    const jpg=await new Promise(r=>cv.toBlob(r,"image/jpeg",0.95));
+    const buf=new Uint8Array(await jpg.arrayBuffer());
+    return {blob:pdfDepuisJpeg(buf,cv.width,cv.height,F.w,F.h,titre(ent(sel.k,sel.i))),
+            nom:base+".pdf", mime:"application/pdf"};
+  }
+  const png=await new Promise(r=>cv.toBlob(r,"image/png"));
+  return {blob:png, nom:base+".png", mime:"image/png"};
+}
+function enregistrerBlob(blob,nom){
+  return new Promise(res=>{
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=nom;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);res();},400);
+  });
+}
+
 /* ==================================================================================
    CARTOTHÈQUE — mémoire des cartes éditées
    Toute carte imprimée depuis un centre de coût y est déposée avec son commentaire ;
@@ -3431,16 +3508,15 @@ async function deposerReference(){
   $("#ctEnvoyer").disabled=false;
 }
 /* dépôt automatique d'une carte imprimée */
-async function deposerCarteImprimee(cv,sel,o,commentaire){
+async function deposerCarteImprimee(f,sel,o,commentaire){
   if(!API.actif||!JETON) return;
-  const b=await new Promise(r=>cv.toBlob(r,"image/png"));
   const b64=await new Promise((res,rej)=>{const l=new FileReader();
-    l.onerror=()=>rej(new Error("image illisible"));
-    l.onload=()=>res(String(l.result).split(",")[1]); l.readAsDataURL(b);});
+    l.onerror=()=>rej(new Error("fichier illisible"));
+    l.onload=()=>res(String(l.result).split(",")[1]); l.readAsDataURL(f.blob);});
   await appelAPI("deposerCarte",{titre:titre(ent(sel.k,sel.i)),
     niveau:sel.k, entite:ent(sel.k,sel.i).nom, commentaire:commentaire,
     nature:"production", format:o.format, resolution:dpiUtile(FORMATS[o.format],o.dpi),
-    fichier:nomFichier(sel), donnees:b64});
+    fichier:f.nom, mime:f.mime, donnees:b64});
 }
 $("#btnCarto").onclick=ouvrirCartotheque;
 $("#ctFermer").onclick=()=>{$("#modaleCarto").hidden=true;};

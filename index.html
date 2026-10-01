@@ -291,6 +291,7 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
   border-radius:2px;color:#fff;flex:none}
 .ctT .et.ref{background:var(--or);color:#3A2C06}
 .ctT .et.prod{background:var(--vert)}
+.ctT .et.typ{background:#5B6E4F}
 .ctM{font-size:11px;color:var(--txt2);margin-top:2px}
 .ctCom{font-size:12px;margin:5px 0;line-height:1.4}
 .ctP{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--txt2);
@@ -472,8 +473,9 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
         <div class="opts">
           <div><label class="champ" for="ctTitre">Intitulé</label>
             <input type="text" id="ctTitre" maxlength="80" placeholder="Carte de la DR Nord-Ouest 2026"></div>
-          <div><label class="champ" for="ctFichier">Image</label>
-            <input type="file" id="ctFichier" accept="image/png,image/jpeg"></div>
+          <div><label class="champ" for="ctFichier">Fichiers — PNG, JPEG ou PDF</label>
+            <input type="file" id="ctFichier" multiple
+              accept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf"></div>
         </div>
         <label class="champ" for="ctCom">Commentaire — obligatoire</label>
         <textarea id="ctCom" rows="2" placeholder="Ce que montre la carte, sa source, sa date…"></textarea>
@@ -626,7 +628,9 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
       <p>Le tableau se filtre par statut, par direction régionale et par recherche libre. L’export CSV reprend le diagnostic complet, coordonnées corrigées comprises. Le bouton <b>Vider</b> efface à la fois les points contrôlés et les couches importées.</p>
 
       <h4>6. Cartothèque</h4>
-      <p>Le bouton <b>Cartothèque</b> du bandeau donne accès à la mémoire des cartes. On y trouve deux natures : les <b>cartes de référence</b>, déposées par l’administration, et les <b>cartes des centres de coût</b>, versées automatiquement à chaque impression. La recherche porte sur l’entité, l’auteur et le commentaire.</p>
+      <p>Le bouton <b>Cartothèque</b> du bandeau donne accès à l’archive des cartes. On y trouve deux natures : les <b>cartes de référence</b>, déposées par l’administration, et les <b>cartes des centres de coût</b>, versées automatiquement à chaque impression. La recherche porte sur l’entité, l’auteur et le commentaire ; un filtre sépare les deux natures.</p>
+      <p>Chaque carte s’ouvre dans le navigateur par <b>Consulter</b> ou s’enregistre sur le poste par <b>Télécharger</b>. Une étiquette indique le type de fichier — PDF, PNG ou JPEG — et, pour les cartes issues de la plateforme, le format de feuille et la résolution.</p>
+      <p>L’administration dépose ses cartes de référence au format <b>PNG, JPEG ou PDF</b>, plusieurs fichiers à la fois, avec un intitulé et un commentaire communs. Chaque fichier est limité à 18 Mo : au-delà, réduisez la résolution avant dépôt. Les cartes anciennes, scannées ou produites hors plateforme trouvent ainsi leur place dans la même archive.</p>
       <p>Toute carte imprimée depuis une session ouverte <b>exige un commentaire</b>, au même titre qu’un tableau : ce que montre la carte, à quoi elle sert, à quelle date les données se rapportent. Sans commentaire, l’impression est refusée. La carte part alors dans votre dossier de téléchargement <i>et</i> dans la cartothèque, où chacun la retrouve avec sa lecture. L’auteur peut retirer ses propres cartes ; l’administrateur, toutes.</p>
 
       <h4>7. Administration</h4>
@@ -3472,17 +3476,36 @@ async function listerCartes(){
       '<div class="ctC">'+
       '<div class="ctT"><span class="et '+(c.nature==="reference"?"ref":"prod")+'">'+
         (c.nature==="reference"?"Référence":"Centre de coût")+'</span>'+
+        '<span class="et typ">'+typeLisible(c)+'</span>'+
         '<b>'+(c.titre||c.entite||"Carte")+'</b></div>'+
-      '<div class="ctM">'+(c.niveau?infoNiv(c.niveau)?infoNiv(c.niveau).lib:c.niveau:"")+
-        (c.entite?' — '+bel(c.entite):'')+' · '+(c.format||'')+' '+(c.resolution?c.resolution+' ppp':'')+'</div>'+
+      '<div class="ctM">'+[(c.niveau&&infoNiv(c.niveau)?infoNiv(c.niveau).lib:c.niveau||""),
+        (c.entite?bel(c.entite):""), feuilleLisible(c),
+        (c.resolution?c.resolution+" ppp":"")].filter(Boolean).join(" · ")+'</div>'+
       '<div class="ctCom">'+(c.commentaire||'')+'</div>'+
       '<div class="ctP"><span>'+c.auteur+' · '+c.portee+' · '+c.date+'</span>'+
-        (c.lien?'<a class="btn sec mini" href="'+c.lien+'" target="_blank" rel="noopener">Ouvrir</a>':'')+
+        (c.lien?'<a class="btn sec mini" href="'+c.lien+'" target="_blank" rel="noopener">Consulter</a>':'')+
+        (c.fichier?'<a class="btn sec mini" href="https://drive.google.com/uc?export=download&id='+
+          c.fichier+'">Télécharger</a>':'')+
         ((c.sien||(COMPTE&&COMPTE.role==="admin"))?
           '<button class="btn sec mini sup" data-sup="'+c.id+'">Retirer</button>':'')+
       '</div></div>').join("");
     $("#ctListe").querySelectorAll("button[data-sup]").forEach(b=>b.onclick=()=>retirerCarte(b.dataset.sup));
   }catch(e){ $("#ctListe").innerHTML='<div class="vide">'+e.message+'</div>'; }
+}
+/* le format est déduit du type enregistré ou, à défaut, du format de feuille */
+function typeLisible(c){
+  const f=String(c.format||""), t=f.indexOf("|")>=0?f.split("|").pop():f;
+  if(/pdf/i.test(t)) return "PDF";
+  if(/jpe?g/i.test(t)) return "JPEG";
+  if(/png/i.test(t)) return "PNG";
+  return "Image";
+}
+/* format de feuille, lorsqu'il s'agit d'une carte imprimée depuis la plateforme */
+function feuilleLisible(c){
+  const f=String(c.format||"");
+  if(f.indexOf("|")<0) return "";
+  const k=f.split("|")[0];
+  return (typeof FORMATS!=="undefined"&&FORMATS[k])?FORMATS[k].lib:k.toUpperCase();
 }
 async function retirerCarte(id){
   if(!confirm("Retirer cette carte de la cartothèque ?")) return;
@@ -3490,21 +3513,38 @@ async function retirerCarte(id){
   catch(e){ alert(e.message); }
 }
 /* dépôt d'une carte de référence, réservé à l'administration */
+const MIME_CARTE={png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",pdf:"application/pdf"};
+const typeCarte=f=>f.type||MIME_CARTE[(f.name.split(".").pop()||"").toLowerCase()]||"";
 async function deposerReference(){
-  const f=$("#ctFichier").files[0], com=$("#ctCom").value.trim();
-  if(!f){ $("#ctEtat").textContent="Choisissez une image."; return; }
+  const fs=[...$("#ctFichier").files], com=$("#ctCom").value.trim();
+  if(!fs.length){ $("#ctEtat").textContent="Choisissez au moins un fichier."; return; }
   if(com.length<10){ $("#ctEtat").textContent="Le commentaire est obligatoire (dix caractères au moins)."; return; }
-  $("#ctEnvoyer").disabled=true; $("#ctEtat").textContent="Dépôt en cours…";
-  try{
-    const b64=await new Promise((res,rej)=>{const l=new FileReader();
-      l.onerror=()=>rej(new Error("fichier illisible"));
-      l.onload=()=>res(String(l.result).split(",")[1]); l.readAsDataURL(f);});
-    await appelAPI("deposerCarte",{titre:$("#ctTitre").value.trim()||f.name,
-      commentaire:com, nature:"reference", fichier:f.name, donnees:b64});
-    $("#ctEtat").textContent="Carte de référence déposée.";
-    $("#ctTitre").value=""; $("#ctCom").value=""; $("#ctFichier").value="";
-    listerCartes();
-  }catch(e){ $("#ctEtat").textContent=e.message; }
+  const mauvais=fs.filter(f=>!MIME_CARTE[(f.name.split(".").pop()||"").toLowerCase()]);
+  if(mauvais.length){ $("#ctEtat").textContent="Formats acceptés : PNG, JPEG et PDF. À écarter : "+
+    mauvais.map(f=>f.name).join(", "); return; }
+  const lourd=fs.find(f=>f.size>18*1024*1024);
+  if(lourd){ $("#ctEtat").textContent="Fichier trop volumineux : "+lourd.name+
+    " dépasse 18 Mo. Réduisez la résolution avant dépôt."; return; }
+  $("#ctEnvoyer").disabled=true;
+  const titreSaisi=$("#ctTitre").value.trim();
+  let faits=0, echecs=[];
+  for(let i=0;i<fs.length;i++){
+    const f=fs[i];
+    $("#ctEtat").textContent="Dépôt "+(i+1)+" / "+fs.length+" — "+f.name+"…";
+    try{
+      const b64=await new Promise((res,rej)=>{const l=new FileReader();
+        l.onerror=()=>rej(new Error("fichier illisible"));
+        l.onload=()=>res(String(l.result).split(",")[1]); l.readAsDataURL(f);});
+      await appelAPI("deposerCarte",{
+        titre:(titreSaisi?(fs.length>1?titreSaisi+" — "+f.name.replace(/\.[^.]+$/,""):titreSaisi):f.name),
+        commentaire:com, nature:"reference", fichier:f.name,
+        mime:typeCarte(f), donnees:b64});
+      faits++;
+    }catch(e){ echecs.push(f.name+" : "+e.message); }
+  }
+  $("#ctEtat").textContent=faits+" carte"+(faits>1?"s":"")+" déposée"+(faits>1?"s":"")+
+    (echecs.length?" · échec sur "+echecs.join(" ; "):"");
+  if(faits){ $("#ctTitre").value=""; $("#ctCom").value=""; $("#ctFichier").value=""; listerCartes(); }
   $("#ctEnvoyer").disabled=false;
 }
 /* dépôt automatique d'une carte imprimée */

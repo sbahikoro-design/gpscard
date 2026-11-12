@@ -36,8 +36,8 @@ jobs:
       - name: Publication (lien de téléchargement direct)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: bs-ir-scan-v1.0
-          name: BS IR SCAN v1.0
+          tag_name: bs-ir-scan-v2.0
+          name: BS IR SCAN v2.0
           target_commitish: bs-ir-scan
           files: BS_IR_SCAN.apk
           body: Télécommande infrarouge universelle — installer BS_IR_SCAN.apk sur un téléphone Android équipé d'un émetteur IR.

@@ -20,7 +20,7 @@ class MainActivity : Activity() {
         store = DeviceStore(this)
 
         val root = Ui.screen(this)
-        root.addView(Ui.title(this, "BS IR SCAN"))
+        root.addView(Ui.title(this, "BS IR SCAN v2"))
         root.addView(Ui.text(this, "Télécommande universelle infrarouge", 14f, Ui.MUTED))
 
         // État de l'émetteur
@@ -28,6 +28,7 @@ class MainActivity : Activity() {
         if (ir.hasEmitter) {
             status.addView(Ui.text(this, "✅ Émetteur infrarouge détecté", 16f, Ui.TEXT, true))
             status.addView(Ui.text(this, "Fréquences prises en charge : ${ir.frequencyInfo()}", 13f, Ui.MUTED))
+            status.addView(Ui.text(this, "Puissance d'émission : ${ir.power.label} (réglable au balayage et sur chaque télécommande)", 13f, Ui.MUTED))
         } else {
             status.addView(Ui.text(this, "⚠ Aucun émetteur infrarouge sur ce téléphone", 16f, Ui.AMBER, true))
             status.addView(Ui.text(this, "L'application fonctionne en mode simulation (vibration seulement) : utile pour tester l'interface.", 13f, Ui.MUTED))
@@ -37,6 +38,9 @@ class MainActivity : Activity() {
         root.addView(Ui.button(this, "🔍  Balayer la zone", Ui.GREEN) {
             startActivity(Intent(this, ScanActivity::class.java))
         }, Ui.lp(this, top = 18))
+        root.addView(Ui.button(this, "📷  Détecteur de signaux IR (caméra)", Ui.BLUE) {
+            startActivity(Intent(this, IrCameraActivity::class.java))
+        }, Ui.lp(this))
         root.addView(Ui.button(this, "➕  Ajouter un appareil manuellement", Ui.GREY) { addManual() }, Ui.lp(this))
 
         root.addView(Ui.text(this, "Mes appareils", 18f, Ui.TEXT, true), Ui.lp(this, top = 26))

@@ -2,6 +2,7 @@ package ci.bsinaly.irscan
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
@@ -26,11 +27,23 @@ class RemoteActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ir = IrTransmitter(this)
+        ir.onError = { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
         store = DeviceStore(this)
+        if (store.get(intent.getStringExtra(EXTRA_ID)) == null) { finish(); return }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Recharge : l'explorateur a pu ajouter des touches
         val d = store.get(intent.getStringExtra(EXTRA_ID))
         if (d == null) { finish(); return }
         device = d
         render()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::ir.isInitialized) ir.onError = null
     }
 
     private fun render() {
@@ -62,8 +75,26 @@ class RemoteActivity : Activity() {
         }
 
         root.addView(Ui.text(this,
-            "Appui long sur une touche pour saisir ou corriger son code. Formats : NEC:04:08 · SAMSUNG:07:02 · SONY12:01:15 · RC5:00:0C · PRONTO:0000 006D … · RAW:38000:9000,4500,…",
+            "Appui long sur une touche pour saisir ou corriger son code. Formats : NEC:04:08 · SAMSUNG:07:02 · SONY12:01:15 · RC5:00:0C · PANASONIC:80:00:3D · PRONTO:0000 006D … · RAW:38000:9000,4500,…",
             12f, Ui.MUTED), Ui.lp(this, top = 18))
+
+        if (ExplorerActivity.familyOf(device) != null) {
+            val missing = Keys.layout(device.type).flatten().count { it.isNotEmpty() && !codes.containsKey(it) }
+            root.addView(Ui.button(this, "🧭  Découvrir les touches" + if (missing > 0) " ($missing manquantes)" else "", Ui.AMBER) {
+                startActivity(Intent(this, ExplorerActivity::class.java).putExtra(EXTRA_ID, device.id))
+            }, Ui.lp(this, top = 14))
+        }
+
+        val power = Ui.horizontal(this)
+        power.addView(Ui.text(this, "Puissance : ", 13f, Ui.MUTED))
+        val powers = IrTransmitter.Power.values()
+        for (p in powers) {
+            power.addView(Ui.button(this, p.label, if (p == ir.power) Ui.GREEN else Ui.CARD) {
+                ir.power = p; render()
+            }, Ui.weighted(this, 3))
+        }
+        power.gravity = android.view.Gravity.CENTER_VERTICAL
+        root.addView(power, Ui.lp(this, top = 10))
 
         val row = Ui.horizontal(this)
         row.addView(Ui.button(this, "✎ Renommer", Ui.CARD) { rename() }, Ui.weighted(this))
@@ -74,7 +105,7 @@ class RemoteActivity : Activity() {
     private fun press(key: String) {
         val code = device.codes()[key]
         if (code == null) { editCode(key); return }
-        ir.send(code)?.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
+        ir.send(code, dropIfBusy = true)?.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
     }
 
     private fun editCode(key: String) {

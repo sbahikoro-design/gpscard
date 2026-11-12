@@ -74,6 +74,7 @@ object CodeDatabase {
     private fun necx(a: Int, vararg k: Pair<String, Int>) = k.associate { it.first to "NECX:%04X:%02X".format(a, it.second) }
     private fun sam(a: Int, vararg k: Pair<String, Int>) = k.associate { it.first to "SAMSUNG:%02X:%02X".format(a, it.second) }
     private fun sony(a: Int, vararg k: Pair<String, Int>) = k.associate { it.first to "SONY12:%02X:%02X".format(a, it.second) }
+    private fun pana(vararg k: Pair<String, Int>) = k.associate { it.first to "PANASONIC:80:00:%02X".format(it.second) }
     private fun rc5(a: Int, vararg k: Pair<String, Int>) = k.associate { it.first to "RC5:%02X:%02X".format(a, it.second) }
 
     val profiles: List<Profile> = listOf(
@@ -120,6 +121,14 @@ object CodeDatabase {
             )
         ),
         Profile(
+            "panasonic_tv", "Panasonic", DeviceType.TV, pana(
+                "POWER" to 0x3D, "INPUT" to 0x05, "MUTE" to 0x32,
+                "VOL_UP" to 0x20, "VOL_DOWN" to 0x21, "CH_UP" to 0x34, "CH_DOWN" to 0x35,
+                "D1" to 0x10, "D2" to 0x11, "D3" to 0x12, "D4" to 0x13, "D5" to 0x14,
+                "D6" to 0x15, "D7" to 0x16, "D8" to 0x17, "D9" to 0x18, "D0" to 0x19
+            )
+        ),
+        Profile(
             "toshiba_tv", "Toshiba", DeviceType.TV, nec(
                 0x40,
                 "POWER" to 0x12, "MUTE" to 0x10,
@@ -135,4 +144,44 @@ object CodeDatabase {
     )
 
     fun byId(id: String?): Profile? = profiles.firstOrNull { it.id == id }
+
+    // ---------------- Candidats de balayage ----------------
+
+    /** Adresses NEC/Samsung les plus répandues (TV génériques, décodeurs, ventilateurs, LED…). */
+    private val COMMON_ADDR = listOf(
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0E, 0x10,
+        0x18, 0x20, 0x40, 0x44, 0x50, 0x6D, 0x80, 0x86, 0xA0, 0xBF, 0xEF, 0xFE
+    )
+
+    /** Commandes « Marche/Arrêt » les plus fréquentes en NEC. */
+    private val NEC_POWER = listOf(0x08, 0x12, 0x45, 0x40, 0x02, 0x0A, 0x1C, 0x00)
+
+    fun candidates(mode: ScanMode): List<Candidate> {
+        val list = profiles.mapNotNull { p ->
+            p.codes["POWER"]?.let { Candidate(p.brand, p.type, it, p.id) }
+        }.toMutableList()
+        if (mode == ScanMode.MARQUES) return list
+        val known = list.map { it.spec }.toMutableSet()
+        val addrs = if (mode == ScanMode.PROFOND) COMMON_ADDR
+        else COMMON_ADDR + (0..0xFF).filter { it !in COMMON_ADDR }
+        val cmds = if (mode == ScanMode.PROFOND) NEC_POWER.take(5) else NEC_POWER
+        for (a in addrs) {
+            for (c in cmds) {
+                val s = "NEC:%02X:%02X".format(a, c)
+                if (known.add(s)) list.add(Candidate("NEC · adr %02X · cmd %02X".format(a, c), null, s, null))
+            }
+            val ss = "SAMSUNG:%02X:02".format(a)
+            if (known.add(ss)) list.add(Candidate("Samsung32 · adr %02X".format(a), null, ss, null))
+        }
+        return list
+    }
+}
+
+/** Code testé pendant le balayage. */
+data class Candidate(val label: String, val type: DeviceType?, val spec: String, val profileId: String?)
+
+enum class ScanMode(val label: String, val detail: String) {
+    MARQUES("Rapide — marques connues", "Samsung, LG, Sony, Panasonic, Philips, Toshiba, Epson"),
+    PROFOND("Profond — marques + appareils génériques", "Ajoute les adresses NEC/Samsung courantes (décodeurs, TV génériques, ventilateurs)"),
+    EXHAUSTIF("Exhaustif — toutes les adresses", "Plus de 2 300 codes : long, à lancer si rien n'a été trouvé")
 }

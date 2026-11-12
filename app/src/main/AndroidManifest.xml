@@ -3,10 +3,14 @@
 
     <uses-permission android:name="android.permission.TRANSMIT_IR" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- Non obligatoire : l'application s'installe aussi sans émetteur (mode simulation) -->
     <uses-feature
         android:name="android.hardware.consumerir"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera"
         android:required="false" />
 
     <application
@@ -32,6 +36,15 @@
 
         <activity
             android:name=".RemoteActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".ExplorerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".IrCameraActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
     </application>

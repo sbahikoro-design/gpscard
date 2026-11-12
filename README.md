@@ -16,6 +16,16 @@ télécommande IR (TV, vidéoprojecteur, décodeur, ampli, ventilateur, climatis
 4. **Contrôler** : télécommande adaptée au type. Appui long sur une touche pour saisir ou
    corriger son code. Appareils enregistrés sur le téléphone.
 
+## Nouveautés v2.0 — détection renforcée
+
+- **Puissance d'émission** : Normale / Forte / Maximale (salves répétées ; en Maximale, émission sur 3 fréquences 36–38–40 kHz).
+- **Balayage Rapide / Profond / Exhaustif** : marques connues, puis adresses NEC/Samsung génériques (décodeurs, TV génériques, ventilateurs), jusqu'à plus de 2 300 codes.
+- **Affinage** : renvoi un à un des 12 derniers codes émis pour isoler le bon.
+- **Explorateur de touches** : parcourt toutes les commandes du protocole de l'appareil et les assigne aux touches.
+- **Détecteur IR par caméra** : repère les éclairs infrarouges d'une télécommande.
+- **Émission en arrière-plan** : l'interface ne se fige jamais ; fréquence ajustée au matériel.
+- Profil **Panasonic** ajouté.
+
 ## Limite physique à connaître
 
 L'émetteur IR d'un téléphone **émet seulement, il ne reçoit pas**. Et les TV, climatiseurs, etc.

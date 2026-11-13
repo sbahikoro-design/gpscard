@@ -111,9 +111,10 @@ object Interphone : TextToSpeech.OnInitListener {
     /** Annonce d'un message reçu, si le mode interphone est actif. */
     fun announce(ctx: Context, m: Msg) {
         if (!Prefs.interphone(ctx) || Hub.call != Hub.Call.IDLE || VoiceRecorder.recording) return
+        val priv = m.to.isNotEmpty()
         when (m.kind) {
-            Msg.K_TEXT -> speak("${m.origin} dit : ${m.text}")
-            Msg.K_VOICE -> m.fileRef?.let { speak("Message vocal de ${m.origin}"); play(it) }
+            Msg.K_TEXT -> speak(if (priv) "Message privé de ${m.origin} : ${m.text}" else "${m.origin} dit : ${m.text}")
+            Msg.K_VOICE -> m.fileRef?.let { speak((if (priv) "Vocal privé de " else "Message vocal de ") + m.origin); play(it) }
             Msg.K_FILE -> speak("${m.origin} vous a envoyé un fichier : ${m.fileName}")
         }
     }
@@ -126,6 +127,8 @@ object VoiceRecorder {
     private var startedAt = 0L
     var recording = false
         private set
+    /** Appelé quand la durée maximale est atteinte (l'appelant envoie le vocal). */
+    var onMax: (() -> Unit)? = null
 
     fun canRecord(c: Context) = Build.VERSION.SDK_INT < 23 ||
         c.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -148,7 +151,7 @@ object VoiceRecorder {
             r.setMaxDuration(60000)
             r.setOutputFile(f.absolutePath)
             r.setOnInfoListener { _, what, _ ->
-                if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) stop(c)
+                if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) onMax?.invoke()
             }
             r.prepare()
             r.start()
@@ -161,9 +164,12 @@ object VoiceRecorder {
         }
     }
 
-    /** Arrête l'enregistrement et l'envoie à tout le salon (sauf s'il est trop court). */
-    fun stop(c: Context, send: Boolean = true) {
-        if (!recording) return
+    /** Résultat d'un enregistrement valable (fichier m4a, durée en ms). */
+    class Recorded(val file: File, val durationMs: Int)
+
+    /** Arrête l'enregistrement ; renvoie null s'il est trop court ou raté. */
+    fun finish(c: Context): Recorded? {
+        if (!recording) return null
         recording = false
         val r = rec; val f = file
         rec = null; file = null
@@ -171,17 +177,21 @@ object VoiceRecorder {
         var ok = true
         try { r?.stop() } catch (e: Exception) { ok = false }
         try { r?.release() } catch (_: Exception) {}
-        if (f == null) return
-        if (!send || !ok || dur < 700) {
+        if (f == null) return null
+        if (!ok || dur < 700) {
             f.delete()
-            if (send) Ui.toast(c, "Trop court : maintenez le bouton pendant que vous parlez.")
-            return
+            Ui.toast(c, "Trop court : maintenez le bouton pendant que vous parlez.")
+            return null
         }
-        if (Hub.readyPeers().isEmpty()) {
-            f.delete()
-            Ui.toast(c, "Aucun correspondant connecté.")
-            return
-        }
-        Hub.sendVoice(f, dur)
+        return Recorded(f, dur)
+    }
+
+    fun cancel() {
+        if (!recording) return
+        recording = false
+        try { rec?.stop() } catch (_: Exception) {}
+        try { rec?.release() } catch (_: Exception) {}
+        file?.delete()
+        rec = null; file = null
     }
 }

@@ -33,6 +33,7 @@ class HubService : Service(), Hub.Events {
         const val ACTION_REJECT = "bscm.REJECT"
         const val ACTION_REFRESH = "bscm.REFRESH"
         const val KEY_REPLY = "reply"
+        const val EXTRA_CONV = "conv"
         private const val CH_SERVICE = "bscm_service"
         private const val CH_MSG = "bscm_msg"
         private const val CH_CALL = "bscm_call"
@@ -73,6 +74,7 @@ class HubService : Service(), Hub.Events {
         Hub.events = this
         Hub.startNetworking()
         Interphone.init(this)
+        VoiceRecorder.onMax = null
         locks()
         overlay = Overlay(this)
         applyBubble()
@@ -89,8 +91,9 @@ class HubService : Service(), Hub.Events {
             }
             ACTION_REPLY -> {
                 val text = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(KEY_REPLY)?.toString()
-                if (!text.isNullOrBlank()) Hub.sendText(text)
-                nm.cancel(N_MSG)
+                val conv = intent.getStringExtra(EXTRA_CONV) ?: ""
+                if (!text.isNullOrBlank()) Hub.sendText(text, conv)
+                cancelMessageNotification(conv)
             }
             ACTION_REJECT -> Hub.reject()
             else -> { goForeground(); Hub.startBtServer() }
@@ -142,13 +145,16 @@ class HubService : Service(), Hub.Events {
     private fun activityPi(code: Int, i: Intent) =
         PendingIntent.getActivity(this, code, i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), piFlags())
 
-    private fun servicePi(code: Int, action: String, mutable: Boolean = false) =
-        PendingIntent.getService(this, code, Intent(this, HubService::class.java).setAction(action), piFlags(mutable))
+    private fun servicePi(code: Int, action: String, mutable: Boolean = false, conv: String? = null) =
+        PendingIntent.getService(this, code, Intent(this, HubService::class.java).setAction(action).apply {
+            if (conv != null) putExtra(EXTRA_CONV, conv)
+        }, piFlags(mutable))
 
     private fun statusText(): String {
         val ps = Hub.readyPeers()
-        return if (ps.isEmpty()) "En écoute (Wi-Fi + Bluetooth) — aucun correspondant connecté"
-        else "${ps.size} connecté(s) : " + ps.joinToString(", ") { it.name }
+        val net = if (Relay.online) "Wi-Fi + Bluetooth + Internet" else "Wi-Fi + Bluetooth"
+        return if (ps.isEmpty()) "En écoute ($net) — code ${Contacts.pretty(Hub.myCode())}"
+        else "${ps.size} connecté(s) : " + ps.joinToString(", ") { "${it.name} ${Proto.icon(it.transport)}" }
     }
 
     private fun serviceNotification(): Notification =
@@ -200,7 +206,7 @@ class HubService : Service(), Hub.Events {
     override fun onIncoming(m: Msg) {
         Interphone.announce(this, m)
         overlay?.onMessage(m)
-        if (!Hub.chatVisible) notifyMessage(m)
+        if (Hub.visibleConv != m.conv) notifyMessage(m)
     }
 
     override fun onPeersChanged() {
@@ -230,22 +236,24 @@ class HubService : Service(), Hub.Events {
 
     @Suppress("DEPRECATION")
     private fun notifyMessage(m: Msg) {
+        val conv = m.conv
         val b = builder(CH_MSG)
             .setSmallIcon(R.drawable.ic_stat)
-            .setContentTitle(m.origin.ifBlank { "BS CALLMagic" })
+            .setContentTitle((if (conv.isEmpty()) "Salon · " else "🔒 ") + m.origin.ifBlank { "BS CALLMagic" })
             .setContentText(m.summary())
             .setStyle(Notification.BigTextStyle().bigText(m.summary()))
             .setAutoCancel(true)
             .setCategory(Notification.CATEGORY_MESSAGE)
-            .setContentIntent(activityPi(3, Intent(this, ChatActivity::class.java)))
-        if (Hub.unread > 1) b.setSubText("${Hub.unread} nouveaux messages")
+            .setContentIntent(activityPi(3 + conv.hashCode(), Intent(this, ChatActivity::class.java).putExtra(ChatActivity.EXTRA_TARGET, conv)))
+        val n = Hub.unreadBy[conv] ?: 0
+        if (n > 1) b.setSubText("$n nouveaux messages")
         if (Build.VERSION.SDK_INT < 26) legacyAlert(b, Notification.PRIORITY_HIGH, !Prefs.interphone(this))
         if (Build.VERSION.SDK_INT >= 24) {
-            val ri = RemoteInput.Builder(KEY_REPLY).setLabel("Répondre à tous…").build()
-            b.addAction(Notification.Action.Builder(0, "Répondre", servicePi(4, ACTION_REPLY, mutable = true))
+            val ri = RemoteInput.Builder(KEY_REPLY).setLabel(if (conv.isEmpty()) "Répondre au salon…" else "Répondre à ${m.origin}…").build()
+            b.addAction(Notification.Action.Builder(0, "Répondre", servicePi(4 + conv.hashCode(), ACTION_REPLY, mutable = true, conv = conv))
                 .addRemoteInput(ri).build())
         }
-        try { nm.notify(N_MSG, b.build()) } catch (_: Exception) {}
+        try { nm.notify(conv, N_MSG, b.build()) } catch (_: Exception) {}
     }
 
     private fun notifyCall() {
@@ -287,5 +295,5 @@ class HubService : Service(), Hub.Events {
         try { (getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)?.cancel() } catch (_: Exception) {}
     }
 
-    fun cancelMessageNotification() = try { nm.cancel(N_MSG) } catch (_: Exception) {}
+    fun cancelMessageNotification(conv: String) = try { nm.cancel(conv, N_MSG) } catch (_: Exception) {}
 }

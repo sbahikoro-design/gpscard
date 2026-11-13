@@ -2,12 +2,9 @@ package ci.bsinaly.callmagic
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -19,14 +16,16 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
-/** Salon de groupe : messages, vocaux, fichiers ; lancement des appels audio/vidéo. */
-class ChatActivity : Activity() {
+/** Conversation : salon de groupe (cible vide) ou privée avec une personne. */
+class ChatActivity : BaseActivity() {
 
     companion object {
+        const val EXTRA_TARGET = "target"
+        const val EXTRA_PICK_FILE = "pick_file"
         private const val REQ_FILE = 10
-        private const val REQ_PERMS = 11
     }
 
+    private var target = ""
     private lateinit var titleView: TextView
     private lateinit var subtitle: TextView
     private lateinit var btnCall: Button
@@ -37,17 +36,23 @@ class ChatActivity : Activity() {
     private lateinit var msgs: LinearLayout
     private lateinit var input: EditText
     private lateinit var talk: Button
-    private lateinit var emptyBox: LinearLayout
+    private lateinit var infoBox: LinearLayout
+    private lateinit var infoText: TextView
+    private lateinit var infoButtons: LinearLayout
 
     private var rendered = 0
-    private var afterPerms: (() -> Unit)? = null
+    private var shown: List<Msg> = emptyList()
     private val observer: () -> Unit = { render() }
+
+    private val isSalon get() = target.isEmpty()
+    private fun contact(): Contact? = if (isSalon) null else People.contactFor(target)
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Hub.init(this)
         HubService.start(this)
+        target = intent?.getStringExtra(EXTRA_TARGET) ?: ""
         val d = { v: Int -> Ui.dp(this, v) }
         val root = Ui.vertical(this).apply { setBackgroundColor(Ui.BG) }
         setContentView(root)
@@ -58,13 +63,13 @@ class ChatActivity : Activity() {
             setPadding(d(14), d(10), d(10), d(10))
         }
         val titles = Ui.vertical(this)
-        titleView = Ui.text(this, "Salon", 18f, Ui.TEXT, true).apply { setSingleLine() }
-        subtitle = Ui.text(this, "", 12f, Ui.MUTED).apply { maxLines = 2 }
+        titleView = Ui.text(this, "", 18f, Ui.TEXT, true).apply { setSingleLine() }
+        subtitle = Ui.text(this, "", 12f, Ui.MUTED).apply { maxLines = 3 }
         titles.addView(titleView); titles.addView(subtitle)
-        titles.setOnClickListener { members() }
+        titles.setOnClickListener { headerInfo() }
         header.addView(titles, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
         btnFile = Ui.iconButton(this, "📎", Ui.GREY) { pickFile() }
-        btnCall = Ui.iconButton(this, "📞", Ui.GREEN) { chooseCall() }
+        btnCall = Ui.iconButton(this, "📞", Ui.GREEN) { callMenu() }
         header.addView(btnFile, LinearLayout.LayoutParams(d(46), d(46)).apply { rightMargin = d(8) })
         header.addView(btnCall, LinearLayout.LayoutParams(d(46), d(46)))
         root.addView(header, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
@@ -75,15 +80,12 @@ class ChatActivity : Activity() {
         progressText = Ui.text(this, "", 13f, Ui.GOLD).apply { setPadding(d(16), d(8), d(16), 0) }
         root.addView(progressText)
 
-        emptyBox = Ui.card(this)
-        emptyBox.addView(Ui.text(this, "Aucun correspondant connecté. Les messages partiront dès qu'un téléphone sera connecté.", 13f, Ui.TEXT))
-        val er = Ui.horizontal(this)
-        er.addView(Ui.button(this, "📶 Wi-Fi", Ui.BLUE) { startActivity(Intent(this, WifiActivity::class.java)) },
-            LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { rightMargin = d(4) })
-        er.addView(Ui.button(this, "🔵 Bluetooth", Ui.BLUE) { startActivity(Intent(this, BluetoothActivity::class.java)) },
-            LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { leftMargin = d(4) })
-        emptyBox.addView(er, Ui.lp(this, top = 8))
-        root.addView(emptyBox, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { setMargins(d(10), d(8), d(10), 0) })
+        infoBox = Ui.card(this)
+        infoText = Ui.text(this, "", 13f, Ui.TEXT)
+        infoBox.addView(infoText)
+        infoButtons = Ui.horizontal(this)
+        infoBox.addView(infoButtons, Ui.lp(this, top = 8))
+        root.addView(infoBox, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { setMargins(d(10), d(8), d(10), 0) })
 
         scroll = ScrollView(this).apply { isFillViewport = true }
         msgs = Ui.vertical(this).apply { setPadding(d(10), d(8), d(10), d(8)) }
@@ -93,10 +95,9 @@ class ChatActivity : Activity() {
         // Saisie + appuyer pour parler
         val inputRow = Ui.horizontal(this).apply {
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(d(8), d(6), d(8), d(10))
+            setPadding(d(8), d(6), d(8), d(4))
         }
         input = EditText(this).apply {
-            hint = "Message au salon…"
             setHintTextColor(Ui.MUTED); setTextColor(Ui.TEXT); textSize = 16f
             background = Ui.rounded(Ui.CARD, d(22).toFloat())
             setPadding(d(16), d(10), d(16), d(10))
@@ -108,16 +109,16 @@ class ChatActivity : Activity() {
         talk.setOnTouchListener { _, e ->
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    if (!VoiceRecorder.canRecord(this)) { needPerms(listOf(Manifest.permission.RECORD_AUDIO)) {} }
+                    if (!VoiceRecorder.canRecord(this)) needPerms(listOf(Manifest.permission.RECORD_AUDIO)) {}
                     else if (VoiceRecorder.start(this)) {
                         talk.background = Ui.rounded(Ui.RED, d(24).toFloat())
-                        progressText.text = "🔴 Enregistrement… relâchez pour envoyer au salon"
+                        progressText.text = "🔴 Enregistrement… relâchez pour envoyer"
                         Ui.show(progressText, true)
                     }
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (VoiceRecorder.recording) VoiceRecorder.stop(this)
+                    VoiceRecorder.finish(this)?.let { r -> withTarget { Hub.sendVoice(r.file, r.durationMs, target) } }
                     talk.background = Ui.rounded(Ui.BLUE, d(24).toFloat())
                     onProgress(Hub.progressText)
                     true
@@ -131,13 +132,30 @@ class ChatActivity : Activity() {
         root.addView(inputRow, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
         root.addView(Ui.center(Ui.text(this, "Maintenez 🎙 pour envoyer un message vocal", 11f, Ui.MUTED)),
             LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { bottomMargin = d(6) })
+
+        VoiceRecorder.onMax = {
+            VoiceRecorder.finish(this)?.let { r -> withTarget { Hub.sendVoice(r.file, r.durationMs, target) } }
+            talk.background = Ui.rounded(Ui.BLUE, d(24).toFloat())
+        }
+        if (intent?.getBooleanExtra(EXTRA_PICK_FILE, false) == true) root.post { pickFile() }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        target = intent?.getStringExtra(EXTRA_TARGET) ?: ""
+        msgs.removeAllViews(); rendered = 0
+        Hub.visibleConv = target
+        Hub.markRead(target)
+        render()
+        if (intent?.getBooleanExtra(EXTRA_PICK_FILE, false) == true) pickFile()
     }
 
     override fun onResume() {
         super.onResume()
-        Hub.chatVisible = true
-        Hub.unread = 0
-        HubService.instance?.cancelMessageNotification()
+        Hub.visibleConv = target
+        Hub.markRead(target)
+        HubService.instance?.cancelMessageNotification(target)
         HubService.instance?.refreshOverlay()
         Hub.observe(observer)
         msgs.removeAllViews()
@@ -147,22 +165,51 @@ class ChatActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
-        Hub.chatVisible = false
+        if (Hub.visibleConv == target) Hub.visibleConv = null
         Hub.unobserve(observer)
-        if (VoiceRecorder.recording) VoiceRecorder.stop(this, send = false)
+        VoiceRecorder.cancel()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        VoiceRecorder.onMax = null
     }
 
     // ------------------------------------------------------------------ affichage
 
     private fun render() {
         val ps = Hub.readyPeers()
-        titleView.text = if (ps.isEmpty()) "Salon" else if (ps.size == 1) ps[0].name else "Salon · ${ps.size + 1} membres"
-        subtitle.text = if (ps.isEmpty()) "🔴 Personne n'est connecté" else "🟢 " + ps.joinToString(", ") { "${it.name} (${it.transport})" }
-        Ui.show(emptyBox, ps.isEmpty())
-        btnCall.isEnabled = ps.isNotEmpty() && Hub.call == Hub.Call.IDLE
-        btnCall.alpha = if (btnCall.isEnabled) 1f else 0.4f
-        btnFile.isEnabled = ps.isNotEmpty()
-        btnFile.alpha = if (btnFile.isEnabled) 1f else 0.4f
+        if (isSalon) {
+            titleView.text = "💬 Salon" + if (ps.isNotEmpty()) " · ${ps.distinctBy { it.deviceId }.size + 1} membres" else ""
+            subtitle.text = if (ps.isEmpty()) "🔴 Personne n'est connecté"
+            else ps.distinctBy { it.deviceId }.joinToString(", ") { "${it.name} ${Proto.icon(it.transport)}" }
+            input.hint = "Message à tout le salon…"
+            Ui.show(infoBox, ps.isEmpty())
+            if (ps.isEmpty()) {
+                infoText.text = "Aucun correspondant connecté. Choisissez une personne dans l'annuaire, ou connectez-vous :"
+                infoButtons.removeAllViews()
+                infoButtons.addView(Ui.button(this, "👥 Annuaire", Ui.GREEN) { finishToHome() }, weight(4))
+                infoButtons.addView(Ui.button(this, "🌐 Internet", Ui.BLUE) { startActivity(Intent(this, InternetActivity::class.java)) }, weight(4))
+            }
+        } else {
+            val c = contact()
+            val name = c?.name ?: Contacts.nameFor(target)
+            titleView.text = "🔒 $name"
+            val acc = c?.let { Contacts.access(it) } ?: emptyList()
+            subtitle.text = acc.firstOrNull()?.label ?: "⚫ Hors de portée — les messages passeront par le salon si possible"
+            input.hint = "Message privé à $name…"
+            val connected = Hub.peerFor(target) != null
+            Ui.show(infoBox, !connected && c != null)
+            if (!connected && c != null) {
+                infoText.text = if (acc.isEmpty()) "$name n'est joignable par aucun accès pour l'instant."
+                else "Pas encore connecté. Accès possibles :\n" + acc.joinToString("\n") { it.label }
+                infoButtons.removeAllViews()
+                if (acc.isNotEmpty()) infoButtons.addView(Ui.button(this, "🔌 Se connecter", Ui.GREEN) {
+                    People.chooseVia(this, c) { via -> People.connect(this, c, via) { render() } }
+                }, weight(0))
+            }
+        }
+        btnCall.alpha = if (Hub.call == Hub.Call.IDLE) 1f else 0.5f
 
         Ui.show(callBar, Hub.call != Hub.Call.IDLE)
         callBar.text = when (Hub.call) {
@@ -172,14 +219,27 @@ class ChatActivity : Activity() {
             Hub.Call.IDLE -> ""
         }
 
-        val h = Hub.history
-        if (h.size < rendered) { msgs.removeAllViews(); rendered = 0 }
-        if (h.size > rendered) {
-            for (i in rendered until h.size) msgs.addView(bubble(h[i]))
-            rendered = h.size
+        val list = Hub.history.filter { it.conv == target }
+        if (list.size < rendered || (rendered > 0 && shown.getOrNull(rendered - 1) !== list.getOrNull(rendered - 1))) {
+            msgs.removeAllViews(); rendered = 0
+        }
+        if (list.size > rendered) {
+            for (i in rendered until list.size) msgs.addView(bubble(list[i]))
+            rendered = list.size
             scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
         }
+        shown = list
+        if (Hub.visibleConv == target && (Hub.unreadBy[target] ?: 0) > 0) Hub.unreadBy.remove(target)
         if (!VoiceRecorder.recording) onProgress(Hub.progressText)
+    }
+
+    private fun weight(m: Int) = LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply {
+        setMargins(Ui.dp(this@ChatActivity, m), 0, Ui.dp(this@ChatActivity, m), 0)
+    }
+
+    private fun finishToHome() {
+        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP))
+        finish()
     }
 
     private fun onProgress(text: String?) {
@@ -199,14 +259,15 @@ class ChatActivity : Activity() {
             setPadding(d(12), d(8), d(12), d(6))
         }
         val maxW = (resources.displayMetrics.widthPixels * 0.78).toInt()
-        if (!m.mine) box.addView(Ui.text(this, m.origin, 12f, Ui.GOLD, true))
+        if (!m.mine && isSalon) box.addView(Ui.text(this, m.origin, 12f, Ui.GOLD, true))
         val body = when (m.kind) {
             Msg.K_VOICE -> "🎤 Message vocal · ${m.durationMs / 1000} s\n▶ Toucher pour écouter"
             Msg.K_FILE -> "📄 ${m.fileName}\n${FileStore.size(m.size)} · " + (if (m.mine) "envoyé" else "reçu — toucher pour ouvrir")
             else -> m.text
         }
         box.addView(Ui.text(this, body, 15f, Ui.TEXT).apply { maxWidth = maxW })
-        box.addView(Ui.text(this, m.hour, 10f, Ui.MUTED).apply { gravity = Gravity.END },
+        val via = if (m.via.isNotEmpty()) "  ·  ${Proto.icon(m.via)} ${m.via}" else ""
+        box.addView(Ui.text(this, m.hour + via, 10f, Ui.MUTED).apply { gravity = Gravity.END },
             LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
         val ref = m.fileRef
         if (ref != null) {
@@ -222,68 +283,61 @@ class ChatActivity : Activity() {
 
     // ------------------------------------------------------------------ actions
 
+    /**
+     * Exécute un envoi : en privé, se connecte d'abord à la personne si besoin (meilleur accès) ;
+     * si elle est injoignable directement, le message passe par le salon s'il y a du monde.
+     */
+    private fun withTarget(action: () -> Unit) {
+        if (isSalon) {
+            if (Hub.readyPeers().isEmpty()) { Ui.toast(this, "Aucun correspondant connecté."); return }
+            action(); return
+        }
+        if (Hub.peerFor(target) != null) { action(); return }
+        val c = contact()
+        if (c == null) { if (Hub.readyPeers().isNotEmpty()) action() else Ui.toast(this, "Personne injoignable."); return }
+        People.connect(this, c, null, onFail = {
+            if (Hub.readyPeers().isNotEmpty()) {
+                Ui.toast(this, "${c.name} injoignable directement : envoi par le salon (relais).")
+                action()
+            } else People.failMessage(this, c, null)
+        }) { action() }
+    }
+
     private fun sendText() {
         val t = input.text.toString().trim()
         if (t.isEmpty()) return
-        if (Hub.readyPeers().isEmpty()) { Ui.toast(this, "Aucun correspondant connecté."); return }
-        Hub.sendText(t)
         input.setText("")
+        withTarget { Hub.sendText(t, target) }
     }
 
-    private fun members() {
+    private fun headerInfo() {
+        if (!isSalon) { contact()?.let { People.showActions(this, it) { render() } }; return }
         val ps = Hub.readyPeers()
         if (ps.isEmpty()) return
-        val names = ps.map { "❌ Déconnecter ${it.name} (${it.transport})" }.toTypedArray()
+        val labels = ps.map { "${Proto.icon(it.transport)} ${it.name} — ${it.transport}" }.toTypedArray()
         AlertDialog.Builder(this)
-            .setTitle("Membres directement connectés")
-            .setItems(names) { _, i -> Hub.disconnect(ps[i]) }
+            .setTitle("Membres connectés (toucher pour déconnecter)")
+            .setItems(labels) { _, i ->
+                AlertDialog.Builder(this).setTitle("Déconnecter ${ps[i].name} (${ps[i].transport}) ?")
+                    .setPositiveButton("Déconnecter") { _, _ -> Hub.disconnect(ps[i]) }
+                    .setNegativeButton("Annuler", null).show()
+            }
             .setNegativeButton("Fermer", null)
             .show()
     }
 
-    private fun chooseCall() {
-        val ps = Hub.readyPeers()
-        if (ps.isEmpty()) { Ui.toast(this, "Aucun correspondant connecté."); return }
-        val items = ArrayList<String>()
-        for (p in ps) {
-            items.add("📞 Appel vocal — ${p.name}")
-            items.add("🎥 Appel vidéo — ${p.name}" + if (p.transport == Proto.BT) " (lent en Bluetooth)" else "")
+    private fun callMenu() {
+        if (Hub.call != Hub.Call.IDLE) { startActivity(Intent(this, CallActivity::class.java)); return }
+        val pick: (Contact) -> Unit = { c ->
+            AlertDialog.Builder(this).setTitle("Appeler ${c.name}")
+                .setItems(arrayOf("📞 Appel vocal", "🎥 Appel vidéo")) { _, i -> People.call(this, c, i == 1) }
+                .setNegativeButton("Annuler", null).show()
         }
-        AlertDialog.Builder(this)
-            .setTitle("Appeler")
-            .setItems(items.toTypedArray()) { _, i -> call(ps[i / 2], i % 2 == 1) }
-            .setNegativeButton("Annuler", null)
-            .show()
-    }
-
-    private fun call(p: Peer, video: Boolean) {
-        val perms = mutableListOf(Manifest.permission.RECORD_AUDIO)
-        if (video) perms.add(Manifest.permission.CAMERA)
-        needPerms(perms) {
-            if (Hub.startCall(p, video)) startActivity(Intent(this, CallActivity::class.java))
-            else Ui.toast(this, "Un appel est déjà en cours.")
-        }
-    }
-
-    private fun needPerms(perms: List<String>, then: () -> Unit) {
-        if (Build.VERSION.SDK_INT < 23) { then(); return }
-        val missing = perms.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isEmpty()) { then(); return }
-        afterPerms = then
-        requestPermissions(missing.toTypedArray(), REQ_PERMS)
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode != REQ_PERMS) return
-        HubService.start(this, HubService.ACTION_REFRESH)
-        if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) afterPerms?.invoke()
-        else Ui.toast(this, "Autorisation refusée.")
-        afterPerms = null
+        if (isSalon) People.pick(this, "Qui appeler ?", pick)
+        else contact()?.let(pick)
     }
 
     private fun pickFile() {
-        if (Hub.readyPeers().isEmpty()) return
         val i = Intent(Intent.ACTION_GET_CONTENT).apply {
             type = "*/*"
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -301,6 +355,7 @@ class ChatActivity : Activity() {
         val clip = data.clipData
         if (clip != null) for (k in 0 until clip.itemCount) clip.getItemAt(k).uri?.let { uris.add(it) }
         else data.data?.let { uris.add(it) }
-        for (u in uris) Hub.sendFile(u)
+        if (uris.isEmpty()) return
+        withTarget { for (u in uris) Hub.sendFile(u, target) }
     }
 }

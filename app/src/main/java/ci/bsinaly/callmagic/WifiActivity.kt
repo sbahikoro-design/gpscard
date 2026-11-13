@@ -84,9 +84,9 @@ class WifiActivity : Activity() {
 
     private fun connect(ip: String) {
         status.text = "⏳ Connexion à $ip…"
-        Hub.connectWifi(ip) { ok ->
+        Hub.connectIp(ip, Hub.PORT) { p ->
             status.text = "🟢 Visible par les autres appareils"
-            if (ok) startActivity(Intent(this, ChatActivity::class.java))
+            if (p != null) startActivity(Intent(this, ChatActivity::class.java))
             else Ui.toast(this, "Connexion impossible à $ip. Vérifiez que BS CALLMagic est ouvert sur l'autre téléphone et que vous êtes sur le même réseau.")
         }
     }

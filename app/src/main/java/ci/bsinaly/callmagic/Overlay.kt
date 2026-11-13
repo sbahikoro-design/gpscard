@@ -102,7 +102,11 @@ class Overlay(private val svc: Service) {
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> { if (VoiceRecorder.start(svc)) { talk.text = "🔴 Parlez… relâchez pour envoyer"; talk.background = Ui.rounded(Ui.RED, dp(12).toFloat()) }; true }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    VoiceRecorder.stop(svc); talk.text = TALK_IDLE; talk.background = Ui.rounded(Ui.BLUE, dp(12).toFloat()); true
+                    VoiceRecorder.finish(svc)?.let { r ->
+                        if (Hub.readyPeers().isEmpty()) Ui.toast(svc, "Aucun correspondant connecté.")
+                        else Hub.sendVoice(r.file, r.durationMs)
+                    }
+                    talk.text = TALK_IDLE; talk.background = Ui.rounded(Ui.BLUE, dp(12).toFloat()); true
                 }
                 else -> true
             }
@@ -157,7 +161,7 @@ class Overlay(private val svc: Service) {
 
     fun hide() {
         if (!shown) return
-        if (VoiceRecorder.recording) VoiceRecorder.stop(svc, send = false)
+        VoiceRecorder.cancel()
         try { wm.removeView(root) } catch (_: Exception) {}
         root = null; shown = false
     }
@@ -167,11 +171,12 @@ class Overlay(private val svc: Service) {
     private fun setPanel(open: Boolean) {
         Ui.show(panel, open)
         Ui.show(snippet, false)
+        if (open) Hub.unreadBy.clear()
         params.flags = if (open) WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
         else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
         if (!open) {
             (svc.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(input.windowToken, 0)
-        } else { Hub.unread = 0 }
+        }
         update()
         refresh()
     }
@@ -190,7 +195,7 @@ class Overlay(private val svc: Service) {
         if (!shown) return
         refresh()
         if (panel.visibility == View.VISIBLE) return
-        snippet.text = "${m.origin} : ${m.summary()}"
+        snippet.text = (if (m.to.isNotEmpty()) "🔒 " else "") + "${m.origin} : ${m.summary()}"
         Ui.show(snippet, true)
         h.removeCallbacksAndMessages(null)
         h.postDelayed({ if (shown) Ui.show(snippet, false) }, 6000)
@@ -199,7 +204,8 @@ class Overlay(private val svc: Service) {
     fun refresh() {
         if (!shown) return
         val ps = Hub.readyPeers()
-        status.text = if (ps.isEmpty()) "Aucun correspondant connecté" else "🟢 ${ps.size} connecté(s) : " + ps.joinToString(", ") { it.name }
+        status.text = (if (ps.isEmpty()) "Aucun correspondant connecté" else "🟢 " + ps.joinToString(", ") { "${it.name} ${Proto.icon(it.transport)}" }) +
+            "\n" + Relay.statusText()
         badge.text = Hub.unread.toString()
         Ui.show(badge, Hub.unread > 0)
         ball.text = when (Hub.call) {
@@ -223,7 +229,7 @@ class Overlay(private val svc: Service) {
         val last = Hub.history.filter { it.kind != Msg.K_SYS }.takeLast(4)
         if (last.isEmpty()) lines.addView(Ui.text(ctx, "Aucun message pour l'instant.", 12f, Ui.MUTED))
         for (m in last) {
-            val who = if (m.mine) "Moi" else m.origin
+            val who = (if (m.to.isNotEmpty()) "🔒 " else "") + (if (m.mine) "Moi" else m.origin)
             val t = Ui.text(ctx, "$who : ${m.summary()}", 13f, Ui.TEXT).apply { maxLines = 2 }
             if (m.kind == Msg.K_VOICE && m.fileRef != null) t.setOnClickListener { Interphone.playNow(m.fileRef) }
             lines.addView(t)

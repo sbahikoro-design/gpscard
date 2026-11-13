@@ -191,7 +191,8 @@ object Hub {
         peers.remove(p)
         for ((k, f) in inFiles) if (f.src === p) { inFiles.remove(k); FileStore.abort(app, f.target); progress(null) }
         if (callPeer === p && call != Call.IDLE) finishCall("📵 Appel coupé : ${p.name} n'est plus joignable")
-        if (p.deviceId.isNotEmpty()) addSystem("⚠ ${p.name} déconnecté ($reason)")
+        if (p.deviceId.isNotEmpty() && peers.none { it.alive && it.deviceId == p.deviceId })
+            addSystem("⚠ ${p.name} déconnecté ($reason)")
         changed()
         main.post { events?.onPeersChanged() }
     }
@@ -208,7 +209,7 @@ object Hub {
                 while (running) {
                     val s = ss.accept()
                     try { s.tcpNoDelay = true } catch (_: Exception) {}
-                    addPeer(Peer(Proto.WIFI, s.inetAddress?.hostAddress ?: "?", s.getInputStream(), s.getOutputStream()) { s.close() })
+                    addPeer(Peer(Proto.WIFI, s.inetAddress?.hostAddress ?: "?", false, s.getInputStream(), s.getOutputStream()) { s.close() })
                 }
             } catch (e: Exception) {
                 try { tcpServer?.close() } catch (_: Exception) {}
@@ -285,7 +286,7 @@ object Hub {
                 val s = Socket()
                 s.connect(InetSocketAddress(ip, PORT), 6000)
                 s.tcpNoDelay = true
-                addPeer(Peer(Proto.WIFI, ip, s.getInputStream(), s.getOutputStream()) { s.close() })
+                addPeer(Peer(Proto.WIFI, ip, true, s.getInputStream(), s.getOutputStream()) { s.close() })
                 true
             } catch (e: Exception) { false }
             main.post { done(ok) }
@@ -336,7 +337,7 @@ object Hub {
                 btServer = ss
                 while (running) {
                     val s = ss.accept()
-                    addPeer(btPeer(s))
+                    addPeer(btPeer(s, false))
                 }
             } catch (_: Exception) {
             } finally {
@@ -347,10 +348,10 @@ object Hub {
         }, "hub-bt").start()
     }
 
-    private fun btPeer(s: BluetoothSocket): Peer {
+    private fun btPeer(s: BluetoothSocket, outgoing: Boolean): Peer {
         val d = s.remoteDevice
         val label = try { d?.name } catch (_: Exception) { null } ?: d?.address ?: "Bluetooth"
-        return Peer(Proto.BT, label, s.inputStream, s.outputStream) { s.close() }
+        return Peer(Proto.BT, label, outgoing, s.inputStream, s.outputStream) { s.close() }
     }
 
     fun connectBt(d: BluetoothDevice, done: (Boolean) -> Unit) {
@@ -372,7 +373,7 @@ object Hub {
                 }
             }
             val sock = s
-            if (sock != null) addPeer(btPeer(sock))
+            if (sock != null) addPeer(btPeer(sock, true))
             main.post { done(sock != null) }
         }, "hub-bt-connect").start()
     }
@@ -384,8 +385,15 @@ object Hub {
             Proto.HELLO -> {
                 val d = DataInputStream(ByteArrayInputStream(b))
                 val id = d.getStr(); val name = d.getStr().ifBlank { "Correspondant" }
-                if (id == myId || peers.any { it !== p && it.alive && it.deviceId == id }) {
-                    io.execute { p.close("doublon", true) }
+                if (id == myId) { io.execute { p.close("soi-même", true) }; return }
+                val dup = peers.filter { it !== p && it.alive && it.deviceId == id }
+                if (dup.isNotEmpty()) {
+                    // Double connexion : les deux téléphones gardent la même (celle ouverte par le plus petit identifiant)
+                    val all = dup + p
+                    val keep = all.firstOrNull { it.outgoing == (myId < id) } ?: dup.first()
+                    if (keep === p) { p.name = name; p.deviceId = id }
+                    for (q in all) if (q !== keep) io.execute { q.close("doublon", true) }
+                    changed()
                     return
                 }
                 p.name = name

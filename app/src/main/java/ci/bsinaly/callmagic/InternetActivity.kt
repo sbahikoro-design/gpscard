@@ -180,6 +180,7 @@ class InternetActivity : BaseActivity() {
         fun line(s: String) { log.append(s + "\n") }
         lateinit var next: () -> Unit
         val success: (Peer) -> Unit = { p ->
+            Contacts.absorb(c, p.deviceId)
             line("✅ Connecté à ${p.name} par ${p.transport}")
             startActivity(Intent(this, ChatActivity::class.java).putExtra(ChatActivity.EXTRA_TARGET, p.deviceId))
         }
@@ -187,7 +188,7 @@ class InternetActivity : BaseActivity() {
             line("🌐 Essai direct $ip (port $port)…")
             Hub.connectIp(ip, port, 7000) { p ->
                 if (p == null) { line("   ✖ injoignable directement"); next() }
-                else waitReady(p) { ok -> if (ok != null) { c.ip = ip; c.port = port; success(ok) } else { line("   ✖ pas de réponse BS CALLMagic"); next() } }
+                else waitReady(p) { ok -> if (ok != null) { c.ip = ip; c.port = port; Contacts.byId(ok.deviceId)?.let { it.ip = ip; it.port = port }; success(ok) } else { line("   ✖ pas de réponse BS CALLMagic"); next() } }
             }
         }
         if (code != null) attempts.add {

@@ -118,6 +118,22 @@ object Contacts {
         Relay.watch(c.code)
     }
 
+    /** Après une connexion réussie depuis un contact saisi à la main : fusionne avec la fiche réelle. */
+    fun absorb(manual: Contact, deviceId: String) {
+        synchronized(list) {
+            val real = list.firstOrNull { it !== manual && it.id == deviceId }
+            if (real != null) {
+                if (manual.ip.isNotEmpty()) { real.ip = manual.ip; real.port = manual.port }
+                if (real.code.isEmpty()) real.code = manual.code
+                list.remove(manual)
+            } else {
+                manual.id = deviceId
+                manual.code = codeOf(deviceId)
+            }
+        }
+        save()
+    }
+
     fun rename(c: Contact, name: String) { if (name.isNotBlank()) { c.name = name.trim(); save() } }
 
     fun remove(c: Contact) { synchronized(list) { list.remove(c) }; save() }

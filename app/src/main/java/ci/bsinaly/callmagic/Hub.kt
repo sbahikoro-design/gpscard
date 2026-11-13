@@ -164,8 +164,17 @@ object Hub {
     fun myName() = Prefs.name(app)
     fun myCode() = Contacts.codeOf(myId)
     fun readyPeers() = peers.filter { it.alive && it.deviceId.isNotEmpty() }
+    /** Liaison vers une personne ; sans accès imposé, la meilleure (Wi-Fi > Internet IP > Internet code > Bluetooth). */
     fun peerFor(id: String, via: String? = null): Peer? =
-        if (id.isEmpty()) null else peers.firstOrNull { it.alive && it.deviceId == id && (via == null || it.transport == via) }
+        if (id.isEmpty()) null
+        else peers.filter { it.alive && it.deviceId == id && (via == null || it.transport == via) }.minByOrNull { rank(it.transport) }
+
+    fun rank(transport: String) = when (transport) {
+        Proto.WIFI -> 0
+        Proto.NET_IP -> 1
+        Proto.NET_CODE -> 2
+        else -> 3
+    }
 
     // ------------------------------------------------------------------ observateurs (fil principal)
 
@@ -666,8 +675,9 @@ object Hub {
         for (q in peers) {
             if (q === from || !q.alive || q.deviceId.isEmpty()) continue
             if (from != null && q.deviceId == from.deviceId) continue
-            if (!sentTo.add(q.deviceId)) continue      // une seule liaison par personne
-            if (q.send(type, b, off, len)) n++
+            if (!sentTo.add(q.deviceId)) continue      // une seule liaison par personne (la meilleure)
+            val best = peerFor(q.deviceId) ?: q
+            if (best.send(type, b, off, len)) n++
         }
         return n
     }

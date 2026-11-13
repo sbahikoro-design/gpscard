@@ -56,6 +56,7 @@ object Relay {
         val on: MutableSet<Int> = java.util.Collections.synchronizedSet(HashSet())
         @Volatile var name = ""
         @Volatile var ts = 0L
+        @Volatile var receivedAt = 0L
     }
 
     private class Pending(val code: String, val kp: KeyPair, val done: (Peer?) -> Unit)
@@ -84,8 +85,10 @@ object Relay {
 
     fun isOnline(code: String): Boolean {
         val p = presence[code] ?: return false
-        // Présence publiée toutes les 5 min : au-delà de 16 min sans nouvelle, on la considère périmée
-        return p.on.isNotEmpty() && System.currentTimeMillis() - p.ts < 16 * 60_000
+        if (p.on.isEmpty()) return false
+        // Présence republiée toutes les 5 min : fraîche si reçue récemment, ou datée de moins de 16 min
+        val now = System.currentTimeMillis()
+        return now - p.receivedAt < 6 * 60_000 || Math.abs(now - p.ts) < 16 * 60_000
     }
 
     private fun presTopic(code: String) = ROOT + "p/" + code
@@ -130,6 +133,7 @@ object Relay {
         try {
             val old = b.client
             if (old != null && old.isConnected) { b.connected = true; return }
+            try { old?.disconnectForcibly(300, 300) } catch (_: Exception) {}
             try { old?.close(true) } catch (_: Exception) {}
             val cid = "bscm-$myCode-$i-" + java.lang.Long.toHexString(rnd.nextLong()).take(6)
             val c = MqttAsyncClient(b.uris[0], cid, MemoryPersistence())
@@ -225,6 +229,7 @@ object Relay {
             if (parts[0] == "1") p.on.add(i) else p.on.remove(i)
             p.ts = parts[1].toLongOrNull() ?: 0L
             p.name = parts[2]
+            p.receivedAt = System.currentTimeMillis()
             Hub.changed()
             return
         }

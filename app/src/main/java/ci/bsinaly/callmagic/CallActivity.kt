@@ -123,7 +123,7 @@ class CallActivity : Activity() {
         if (intent?.getBooleanExtra(EXTRA_ACCEPT, false) == true) handler.post { accept() }
     }
 
-    private fun weight() = LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { setMargins(Ui.dp(this, 3), 0, Ui.dp(this, 3), 0) }
+    private fun weight() = LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { setMargins(Ui.dp(this@CallActivity, 3), 0, Ui.dp(this@CallActivity, 3), 0) }
 
     override fun onResume() {
         super.onResume()

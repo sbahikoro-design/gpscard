@@ -66,7 +66,8 @@ object CallEngine {
                     val n = rec.read(frame, 0, frame.size)
                     if (n <= 0) continue
                     if (muted) Arrays.fill(frame, 0, n, 0.toByte())
-                    if (!Link.send(Link.T_AUDIO, frame, 0, n)) break
+                    val peer = Hub.callPeer ?: break
+                    if (!peer.send(Proto.AUDIO, frame, 0, n)) break
                 }
             } catch (_: Exception) {
             } finally {

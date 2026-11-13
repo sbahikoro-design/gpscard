@@ -2,39 +2,32 @@ package ci.bsinaly.callmagic
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothManager
-import android.bluetooth.BluetoothServerSocket
-import android.bluetooth.BluetoothSocket
+import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.LinearLayout
 import android.widget.TextView
-import java.util.UUID
 
-/** Mode Bluetooth classique (RFCOMM) : serveur en attente + connexion à un appareil associé ou détecté. */
+/** Mode Bluetooth : appareils associés ou à proximité ; le service attend aussi les connexions entrantes. */
 @SuppressLint("MissingPermission")
 class BluetoothActivity : Activity() {
 
     companion object {
-        val APP_UUID: UUID = UUID.fromString("7b1d3e2a-5c4f-4b8e-9a61-bc5ca11a6c01")
         private const val REQ_PERMS = 1
         private const val REQ_ENABLE = 2
     }
 
     private var adapter: BluetoothAdapter? = null
-    @Volatile private var active = false
-    @Volatile private var serverSocket: BluetoothServerSocket? = null
     private val found = LinkedHashMap<String, BluetoothDevice>()
     private var scanning = false
     private var receiverOn = false
+    private val observer: () -> Unit = { render() }
 
     private lateinit var status: TextView
     private lateinit var paired: LinearLayout
@@ -51,18 +44,20 @@ class BluetoothActivity : Activity() {
                     if (d != null) { found[d.address] = d; render() }
                 }
                 BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> { scanning = false; render() }
-                BluetoothAdapter.ACTION_STATE_CHANGED -> { if (ready()) startServer(); render() }
+                BluetoothAdapter.ACTION_STATE_CHANGED -> { Hub.startBtServer(); render() }
             }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        adapter = (getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+        Hub.init(this)
+        HubService.start(this)
+        adapter = Hub.btAdapter()
 
         val root = Ui.screen(this)
-        root.addView(Ui.title(this, "🔵 Échange Bluetooth"))
-        root.addView(Ui.text(this, "Aucun réseau nécessaire. Les deux téléphones doivent avoir BS CALLMagic ouvert en mode Bluetooth.", 13f, Ui.MUTED))
+        root.addView(Ui.title(this, "🔵 Bluetooth"))
+        root.addView(Ui.text(this, "Aucun réseau nécessaire. Portée d'une dizaine de mètres. Plusieurs téléphones peuvent se connecter à celui-ci pour former un salon.", 13f, Ui.MUTED))
 
         val card = Ui.card(this)
         status = Ui.text(this, "", 14f, Ui.TEXT)
@@ -87,7 +82,10 @@ class BluetoothActivity : Activity() {
         root.addView(Ui.text(this, "Appareils à proximité", 18f, Ui.TEXT, true), Ui.lp(this, top = 22))
         nearby = Ui.vertical(this)
         root.addView(nearby)
-        root.addView(Ui.text(this, "Astuce : si l'autre téléphone n'apparaît pas, touchez « Me rendre visible » sur celui-ci puis « Rechercher » sur l'autre. Une demande d'association peut s'afficher à la première connexion : acceptez-la sur les deux téléphones.", 12f, Ui.MUTED), Ui.lp(this, top = 18))
+        root.addView(Ui.button(this, "💬  Ouvrir le salon", Ui.GREEN) {
+            startActivity(Intent(this, ChatActivity::class.java))
+        }, Ui.lp(this, top = 18))
+        root.addView(Ui.text(this, "Astuce : si l'autre téléphone n'apparaît pas, touchez « Me rendre visible » sur lui, puis « Rechercher » ici. Acceptez la demande d'association si elle s'affiche.", 12f, Ui.MUTED), Ui.lp(this, top = 12))
 
         val f = IntentFilter().apply {
             addAction(BluetoothDevice.ACTION_FOUND)
@@ -101,21 +99,22 @@ class BluetoothActivity : Activity() {
         askPermissions()
     }
 
-    override fun onStart() {
-        super.onStart()
-        if (adapter != null && ready()) startServer()
-        if (adapter != null) render()
+    override fun onResume() {
+        super.onResume()
+        if (adapter == null) return
+        Hub.observe(observer)
+        if (ready()) Hub.startBtServer()
+        render()
     }
 
-    override fun onStop() {
-        super.onStop()
-        stopServer()
-        try { if (hasPerms()) adapter?.cancelDiscovery() } catch (_: Exception) {}
-        scanning = false
+    override fun onPause() {
+        super.onPause()
+        Hub.unobserve(observer)
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        try { if (ready()) adapter?.cancelDiscovery() } catch (_: Exception) {}
         if (receiverOn) try { unregisterReceiver(receiver) } catch (_: Exception) {}
     }
 
@@ -129,21 +128,18 @@ class BluetoothActivity : Activity() {
         else -> emptyArray()
     }
 
-    private fun hasPerms() = Build.VERSION.SDK_INT < 23 ||
-        neededPerms().all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
-
-    private fun ready() = hasPerms() && adapter?.isEnabled == true
+    private fun ready() = Hub.hasBtPerms(this) && adapter?.isEnabled == true
 
     private fun askPermissions() {
-        if (!hasPerms() && Build.VERSION.SDK_INT >= 23) requestPermissions(neededPerms(), REQ_PERMS)
+        if (!Hub.hasBtPerms(this) && Build.VERSION.SDK_INT >= 23) requestPermissions(neededPerms(), REQ_PERMS)
         else ensureEnabled()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQ_PERMS) {
-            if (hasPerms()) ensureEnabled()
-            else { status.text = "⚠ Autorisations Bluetooth refusées. Accordez-les dans les paramètres de l'application."; }
+            if (Hub.hasBtPerms(this)) ensureEnabled()
+            else status.text = "⚠ Autorisations Bluetooth refusées. Accordez-les dans les paramètres de l'application."
         }
     }
 
@@ -151,81 +147,27 @@ class BluetoothActivity : Activity() {
         val a = adapter ?: return
         if (!a.isEnabled) {
             try { startActivityForResult(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE), REQ_ENABLE) } catch (_: Exception) {}
-        } else { startServer(); render() }
+        } else { Hub.startBtServer(); render() }
     }
 
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_ENABLE) { if (ready()) startServer(); render() }
+        if (requestCode == REQ_ENABLE) { Hub.startBtServer(); render() }
     }
 
-    // ------------------------------------------------------------------ Bluetooth
-
-    private fun startServer() {
-        if (active || Link.connected) return
-        val a = adapter ?: return
-        active = true
-        Thread({
-            try {
-                val ss = a.listenUsingInsecureRfcommWithServiceRecord("BS CALLMagic", APP_UUID)
-                serverSocket = ss
-                if (!active) ss.close()
-                while (active) {
-                    val s = ss.accept()
-                    if (Link.connected) { try { s.close() } catch (_: Exception) {}; continue }
-                    onSocket(s)
-                }
-            } catch (_: Exception) {
-            } finally {
-                active = false
-            }
-        }, "bt-server").start()
-    }
-
-    private fun stopServer() {
-        active = false
-        try { serverSocket?.close() } catch (_: Exception) {}
-        serverSocket = null
-    }
-
-    private fun onSocket(s: BluetoothSocket) {
-        Link.attach(this, s.inputStream, s.outputStream, Link.BT, Prefs.name(this)) {
-            try { s.close() } catch (_: Exception) {}
-        }
-        runOnUiThread { startActivity(Intent(this, ChatActivity::class.java)) }
-    }
+    // ------------------------------------------------------------------ actions
 
     private fun connect(d: BluetoothDevice) {
-        if (Link.connected) { startActivity(Intent(this, ChatActivity::class.java)); return }
         if (!ready()) { askPermissions(); return }
-        try { adapter?.cancelDiscovery() } catch (_: Exception) {}
         scanning = false
         val label = d.name ?: d.address
         status.text = "⏳ Connexion à $label…"
-        Thread({
-            var s: BluetoothSocket? = null
-            try {
-                s = d.createInsecureRfcommSocketToServiceRecord(APP_UUID)
-                s.connect()
-            } catch (e: Exception) {
-                try { s?.close() } catch (_: Exception) {}
-                s = null
-                try {
-                    s = d.createRfcommSocketToServiceRecord(APP_UUID)
-                    s.connect()
-                } catch (e2: Exception) {
-                    try { s?.close() } catch (_: Exception) {}
-                    s = null
-                }
-            }
-            val sock = s
-            if (sock != null) onSocket(sock)
-            else runOnUiThread {
-                render()
-                Ui.toast(this, "Connexion impossible à $label. Vérifiez que BS CALLMagic est ouvert en mode Bluetooth sur l'autre téléphone.")
-            }
-        }, "bt-connect").start()
+        Hub.connectBt(d) { ok ->
+            render()
+            if (ok) startActivity(Intent(this, ChatActivity::class.java))
+            else Ui.toast(this, "Connexion impossible à $label. Vérifiez que BS CALLMagic est ouvert sur l'autre téléphone.")
+        }
     }
 
     private fun scan() {
@@ -249,7 +191,7 @@ class BluetoothActivity : Activity() {
 
     private fun render() {
         val a = adapter ?: return
-        if (!hasPerms()) { status.text = "⚠ Autorisations Bluetooth nécessaires."; return }
+        if (!Hub.hasBtPerms(this)) { status.text = "⚠ Autorisations Bluetooth nécessaires."; return }
         if (!a.isEnabled) {
             status.text = "⚠ Bluetooth désactivé."
             paired.removeAllViews(); nearby.removeAllViews()
@@ -257,7 +199,10 @@ class BluetoothActivity : Activity() {
             return
         }
         val me = try { a.name } catch (_: Exception) { null } ?: Prefs.name(this)
-        status.text = "🟢 En attente de connexion\nCe téléphone : $me" + if (scanning) "\n🔍 Recherche des appareils…" else ""
+        val connected = Hub.readyPeers().filter { it.transport == Proto.BT }
+        status.text = "🟢 En attente de connexion — ce téléphone : $me" +
+            (if (connected.isNotEmpty()) "\n✅ Connecté : " + connected.joinToString(", ") { it.name } else "") +
+            (if (scanning) "\n🔍 Recherche des appareils…" else "")
 
         paired.removeAllViews()
         val bonded = try { a.bondedDevices?.toList().orEmpty() } catch (_: Exception) { emptyList() }

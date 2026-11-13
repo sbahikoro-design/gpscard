@@ -36,8 +36,8 @@ jobs:
       - name: Publication (lien de téléchargement direct)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: bs-callmagic-v1.0
-          name: BS CALLMagic v1.0
+          tag_name: bs-callmagic-v2.0
+          name: BS CALLMagic v2.0
           target_commitish: bs-callmagic
           files: BS_CALLMagic.apk
-          body: Messages, fichiers et appels vocaux sans Internet, par Wi-Fi ou Bluetooth. Installer BS_CALLMagic.apk sur les deux téléphones.
+          body: Salon de groupe, messages, vocaux, fichiers, appels audio et vidéo sans Internet (Wi-Fi ou Bluetooth), mode interphone, bulle flottante et réception en arrière-plan. Installer BS_CALLMagic.apk sur les deux téléphones.

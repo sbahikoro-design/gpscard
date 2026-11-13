@@ -98,12 +98,24 @@ object Ui {
     fun show(v: View, visible: Boolean) { v.visibility = if (visible) View.VISIBLE else View.GONE }
 }
 
-/** Pseudo de l'utilisateur, affiché chez le correspondant. */
+/** Réglages de l'application. */
 object Prefs {
-    fun name(c: Context): String =
-        c.getSharedPreferences("bscm", Context.MODE_PRIVATE).getString("name", null)
-            ?.takeIf { it.isNotBlank() } ?: android.os.Build.MODEL
+    private fun sp(c: Context) = c.getSharedPreferences("bscm", Context.MODE_PRIVATE)
 
-    fun setName(c: Context, n: String) =
-        c.getSharedPreferences("bscm", Context.MODE_PRIVATE).edit().putString("name", n.trim()).apply()
+    fun name(c: Context): String =
+        sp(c).getString("name", null)?.takeIf { it.isNotBlank() } ?: android.os.Build.MODEL
+
+    fun setName(c: Context, n: String) = sp(c).edit().putString("name", n.trim()).apply()
+
+    fun deviceId(c: Context): String =
+        sp(c).getString("id", null) ?: java.util.UUID.randomUUID().toString().also { sp(c).edit().putString("id", it).apply() }
+
+    fun interphone(c: Context) = sp(c).getBoolean("interphone", true)
+    fun setInterphone(c: Context, v: Boolean) = sp(c).edit().putBoolean("interphone", v).apply()
+
+    fun bubble(c: Context) = sp(c).getBoolean("bubble", true)
+    fun setBubble(c: Context, v: Boolean) = sp(c).edit().putBoolean("bubble", v).apply()
+
+    fun autoJoin(c: Context) = sp(c).getBoolean("autojoin", true)
+    fun setAutoJoin(c: Context, v: Boolean) = sp(c).edit().putBoolean("autojoin", v).apply()
 }

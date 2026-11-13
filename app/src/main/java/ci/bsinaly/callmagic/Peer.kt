@@ -12,6 +12,7 @@ import java.io.OutputStream
 class Peer(
     val transport: String,
     val address: String,
+    val outgoing: Boolean,
     input: InputStream,
     output: OutputStream,
     private val closer: () -> Unit

@@ -22,7 +22,7 @@ object CallEngine {
         private set
 
     @Synchronized
-    fun start(ctx: Context, rate: Int) {
+    fun start(ctx: Context, rate: Int, frameMs: Int = 20) {
         if (running) return
         val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         try {
@@ -35,7 +35,7 @@ object CallEngine {
         @Suppress("DEPRECATION")
         val t = AudioTrack(
             AudioManager.STREAM_VOICE_CALL, rate, AudioFormat.CHANNEL_OUT_MONO,
-            AudioFormat.ENCODING_PCM_16BIT, maxOf(outMin, rate / 4 * 2), AudioTrack.MODE_STREAM
+            AudioFormat.ENCODING_PCM_16BIT, maxOf(outMin, rate / 1000 * maxOf(250, frameMs * 6) * 2), AudioTrack.MODE_STREAM
         )
         try { t.play() } catch (_: Exception) {}
         track = t
@@ -61,7 +61,7 @@ object CallEngine {
             } catch (_: Exception) {}
             try {
                 rec.startRecording()
-                val frame = ByteArray(rate / 50 * 2) // 20 ms
+                val frame = ByteArray(rate / 1000 * frameMs * 2)
                 while (running) {
                     val n = rec.read(frame, 0, frame.size)
                     if (n <= 0) continue

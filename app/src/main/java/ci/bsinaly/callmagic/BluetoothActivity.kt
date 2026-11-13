@@ -163,9 +163,9 @@ class BluetoothActivity : Activity() {
         scanning = false
         val label = d.name ?: d.address
         status.text = "⏳ Connexion à $label…"
-        Hub.connectBt(d) { ok ->
+        Hub.connectBt(d) { p ->
             render()
-            if (ok) startActivity(Intent(this, ChatActivity::class.java))
+            if (p != null) startActivity(Intent(this, ChatActivity::class.java))
             else Ui.toast(this, "Connexion impossible à $label. Vérifiez que BS CALLMagic est ouvert sur l'autre téléphone.")
         }
     }

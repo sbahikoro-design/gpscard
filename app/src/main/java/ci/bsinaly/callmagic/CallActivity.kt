@@ -48,7 +48,11 @@ class CallActivity : Activity() {
     private val observer: () -> Unit = { render() }
     private val tick = object : Runnable {
         override fun run() {
-            if (Hub.call == Hub.Call.ACTIVE) { stateText.text = Hub.duration(); handler.postDelayed(this, 1000) }
+            if (Hub.call == Hub.Call.ACTIVE) {
+                val tr = Hub.callPeer?.transport ?: ""
+                stateText.text = "${Hub.duration()}  ·  ${Proto.icon(tr)} $tr"
+                handler.postDelayed(this, 1000)
+            }
         }
     }
 
@@ -165,7 +169,7 @@ class CallActivity : Activity() {
         Ui.show(local, video && c == Hub.Call.ACTIVE && camOn)
         when (c) {
             Hub.Call.RINGING_IN -> stateText.text = (if (video) "🎥 Appel vidéo entrant" else "📞 Appel vocal entrant") + " · ${p?.transport ?: ""}"
-            Hub.Call.RINGING_OUT -> { stateText.text = "Ça sonne…"; startTone() }
+            Hub.Call.RINGING_OUT -> { stateText.text = "Ça sonne…  ·  ${Proto.icon(p?.transport ?: "")} ${p?.transport ?: ""}"; startTone() }
             Hub.Call.ACTIVE -> {
                 stopTone()
                 handler.removeCallbacks(tick); handler.post(tick)

@@ -57,9 +57,9 @@ object VideoEngine {
             val w = size.width
             val h = size.height
             val rot = info.orientation
-            val slow = Hub.callPeer?.transport == Proto.BT
-            val interval = if (slow) 300L else 80L
-            val quality = if (slow) 35 else 55
+            val tr = Hub.callPeer?.transport
+            val interval = when (tr) { Proto.BT -> 300L; Proto.NET_CODE -> 250L; Proto.NET_IP -> 120L; else -> 80L }
+            val quality = when (tr) { Proto.BT, Proto.NET_CODE -> 35; Proto.NET_IP -> 45; else -> 55 }
             c.setPreviewCallback { data, _ ->
                 val now = SystemClock.elapsedRealtime()
                 if (data != null && pending == null && now - lastCapture >= interval) {

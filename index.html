@@ -48,6 +48,13 @@ aside{width:340px;flex:none;background:var(--carte);border-right:1px solid var(-
   border:1px solid var(--trait);background:#fff;color:var(--txt2);transition:.15s;
   display:flex;align-items:center;gap:7px;line-height:1.25}
 .bascule:hover{border-color:var(--vert);color:var(--txt)}
+.badgeEch{background:rgba(255,255,255,.94);border:1px solid var(--trait);border-radius:5px;
+  padding:6px 10px;font:inherit;font-size:11.5px;font-weight:700;color:var(--txt);
+  box-shadow:0 2px 8px rgba(0,0,0,.14);cursor:pointer;user-select:none;line-height:1.3}
+.badgeEch i{display:block;font-style:normal;font-size:8.5px;font-weight:600;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--txt2)}
+.badgeEch u{display:block;text-decoration:none;font-size:9.5px;font-weight:400;color:var(--txt2)}
+.badgeEch:hover{border-color:var(--vert)}
 .bascule .jeton{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--trait);flex:none;
   background:#fff;position:relative;transition:.15s}
 .bascule.on{background:#F4F7F3;border-color:var(--vert);color:var(--txt);font-weight:700}
@@ -368,6 +375,12 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
 
   <div class="bloc" id="blocZones">
     <h2>Niveaux de visualisation</h2>
+    <button class="bascule on" id="btnEchelle" aria-pressed="true" style="width:100%;margin-bottom:8px">
+      <span class="jeton"></span><span class="tx">Affichage automatique par échelle</span>
+      <span class="cpt" id="echelleEtat">—</span></button>
+    <div class="aide" style="margin:-4px 0 8px">En dézoomant, seul le plus grand découpage reste visible ;
+      en zoomant, le découpage suivant apparaît et le plus englobant s’efface. Toucher un niveau
+      ci-dessous reprend la main.</div>
     <label class="champ">Limites administratives — de la plus englobante à la plus fine</label>
     <div class="grille" id="niveaux"></div>
     <label class="champ">Chefs-lieux et localités — par rang décroissant</label>
@@ -612,6 +625,16 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
       <p>Une fois la délimitation retenue, la carte se recadre dessus, les subdivisions filles apparaissent et le panneau affiche le <b>rattachement complet</b> ainsi que les chiffres clés : superficie, part du territoire, effectifs de chaque niveau inférieur, localités référencées. Un clic sur une subdivision descend d’un cran ; un clic sur une ligne du rattachement remonte.</p>
 
       <h4>3. Lire la carte</h4>
+      <p><b>Affichage par échelle.</b> Par défaut, la carte ne montre que le découpage qui
+      convient à l’échelle : en vue nationale, seules les Directions Régionales ; en zoomant,
+      les Zones apparaissent, puis les régions administratives, les départements, les
+      sous-préfectures, les CADR et enfin les localités — et le découpage le plus englobant
+      s’efface à mesure, pour que la carte reste lisible. Le bandeau en haut à droite indique
+      le niveau en cours. Toucher un niveau dans le panneau, ou cliquer ce bandeau, rend la
+      main : l’affichage redevient entièrement manuel jusqu’à ce qu’on réactive le bouton
+      <i>Affichage automatique par échelle</i>. Les compteurs du panneau restent les effectifs
+      complets de l’emprise, et les planches imprimées ne dépendent jamais du zoom de l’écran.</p>
+
       <p>La hiérarchie est portée par la couleur et l’épaisseur du trait, jamais par le seul libellé : limite d’État en pointillé, direction régionale au remplissage de couleur, région administrative en orange, zone ANADER en trait noir plein, département plus fin, sous-préfecture en tirets, CADR en tirets rouges.</p>
       <p>Chaque site ne porte qu’un seul symbole, celui de son rang le plus élevé : le logo cerclé pour la Direction Générale et les chefs-lieux de DR, le carré noir pour les chefs-lieux de région, le rond gris pour les départements, le rond blanc pour les sous-préfectures, le rond jaune pour les CADR. Le bloc <b>Niveaux de visualisation</b> permet d’allumer ou d’éteindre chaque niveau ; la légende se recompose automatiquement.</p>
 
@@ -1123,11 +1146,12 @@ function traitSVG(Li,larg){
     (Li.tirets?' stroke-dasharray="'+Li.tirets.join(" ")+'"':"")+
     (Li.rond?' stroke-linecap="round"':"")+'/></svg>';
 }
-function objetsLim(k){
+function objetsLim(k,toutes){
   const S=SRC_LIM[k];
   return S.get().filter(o=>{
     if(o.j===undefined) return true;                       /* frontière d'État */
     if(!dansPortee(k,o.j)&&!ascendantDePortee(k,o.j)) return false;
+    if(!toutes&&!dansVue(k,o.j)) return false;             /* hors de la vue : inutile de tracer */
     return !S.dr||garde(S.dr(o.j));
   });
 }
@@ -1137,7 +1161,7 @@ LIMITES.forEach(Li=>{
     lib:{etat:"État",dr:"Directions Régionales",zone:"Zones ANADER",region:"Régions",
          dept:"Départements",sp:"Sous-préfectures",cadr:"CADR",aire:"Aires protégées"}[Li.k],
     groupe:"limite", on:DEFAUT_ON[Li.k], repere:traitSVG(Li),
-    n:()=>objetsLim(Li.k).length,
+    n:()=>objetsLim(Li.k,true).length,   /* le compteur reste l'effectif total de l'emprise */
     faire:()=>L.geoJSON({type:"FeatureCollection",features:objetsLim(Li.k).map(o=>
         ({type:"Feature",geometry:o.g,properties:Object.assign({_j:o.j},o.p)}))},{
       style:f=>({color:Li.coul,weight:Li.ep,
@@ -1167,7 +1191,7 @@ CHEFSN.forEach(C=>{
 NIV_ORDRE.push("loc");
 NIVEAUX.loc={lib:"Localités référencées",groupe:"chef",on:DEFAUT_ON.loc,repere:symHTML("point",12),
   n:()=>LOCALITES.filter((l,i)=>garde(LOC_DR[i])&&dansPortee("loc",i)).length,
-  faire:()=>L.layerGroup(LOCALITES.filter((l,i)=>garde(LOC_DR[i])&&dansPortee("loc",i)).map(l=>
+  faire:()=>L.layerGroup(LOCALITES.filter((l,i)=>garde(LOC_DR[i])&&dansPortee("loc",i)&&pointDansVue(l[1],l[2])).map(l=>
     L.circleMarker([l[2],l[1]],{radius:2.6,stroke:false,fillColor:l[0]?"#5B6E4F":"#A9A79A",fillOpacity:.85})
      .bindTooltip(l[0]||"Habitat non dénommé",{direction:"top"})))};
 
@@ -1195,8 +1219,69 @@ function popupEntite(k,p){
   return t;
 }
 
+/* ====== affichage progressif : on ne montre que l'ensemble qui convient à l'échelle ======
+   Au dézoom, seul le plus grand découpage reste ; en zoomant, le découpage suivant
+   apparaît et le plus englobant s'efface, de sorte que la carte ne se charge jamais. */
+const ECHELLE=[
+ {z:0,  nom:"Directions Régionales", lim:["etat","dr"],            chefs:["cdg","cdr"]},
+ {z:8,  nom:"Zones ANADER",          lim:["etat","dr","zone"],     chefs:["cdg","cdr","czone","czonecf","cform"]},
+ {z:9,  nom:"Régions administratives",lim:["dr","zone","region"],  chefs:["cdr","czone","czonecf","cform"]},
+ {z:10, nom:"Départements",          lim:["zone","region","dept"], chefs:["czone","czonecf","cform","cdept"]},
+ {z:11, nom:"Sous-préfectures",      lim:["zone","dept","sp"],     chefs:["czone","cdept","csp"]},
+ {z:12, nom:"CADR",                  lim:["dept","sp","cadr"],     chefs:["csp","ccadr"]},
+ {z:13, nom:"CADR et localités",     lim:["sp","cadr"],            chefs:["csp","ccadr","loc"]}
+];
+let AUTO_ECHELLE=true;
+/* niveaux fins : on ne dessine que ce qui entre dans la vue */
+const BORNE_VUE={dept:1,sp:1,cadr:1,loc:1};
+function palierEchelle(){
+  const z=map.getZoom(); let r=ECHELLE[0];
+  for(const e of ECHELLE) if(z>=e.z) r=e;
+  return r;
+}
+function appliquerEchelle(){
+  if(!AUTO_ECHELLE) return;
+  const e=palierEchelle();
+  NIV_ORDRE.forEach(k=>{
+    if(k==="aire") return;                       /* couche thématique : laissée à l'utilisateur */
+    NIVEAUX[k].on = e.lim.indexOf(k)>=0 || e.chefs.indexOf(k)>=0;
+  });
+}
+function vueCourante(){
+  const b=map.getBounds().pad(0.30);
+  return [b.getWest(),b.getSouth(),b.getEast(),b.getNorth()];
+}
+function dansVue(k,j){
+  if(!AUTO_ECHELLE||!BORNE_VUE[k]) return true;
+  const a=ATLAS.niveaux[k]&&ATLAS.niveaux[k][j];
+  if(!a||!a.bb) return true;
+  const v=vueCourante();
+  return !(a.bb[2]<v[0]||a.bb[0]>v[2]||a.bb[3]<v[1]||a.bb[1]>v[3]);
+}
+function pointDansVue(lon,lat){
+  if(!AUTO_ECHELLE) return true;
+  const v=vueCourante();
+  return lon>=v[0]&&lon<=v[2]&&lat>=v[1]&&lat<=v[3];
+}
+function basculerEchelle(on){
+  AUTO_ECHELLE=(on===undefined)?!AUTO_ECHELLE:!!on;
+  const b=$("#btnEchelle");
+  if(b){ b.classList.toggle("on",AUTO_ECHELLE); b.setAttribute("aria-pressed",AUTO_ECHELLE); }
+  rendreNiveaux();
+}
+function majBadgeEchelle(){
+  const e=palierEchelle();
+  const b=$("#echelleEtat");
+  if(b) b.textContent=AUTO_ECHELLE?e.nom:"manuel";
+  const d=document.getElementById("badgeEchelle");
+  if(d) d.innerHTML=AUTO_ECHELLE
+    ? '<i>Échelle</i>'+bel(e.nom)+'<u>zoom '+map.getZoom()+'</u>'
+    : '<i>Échelle</i>Affichage manuel';
+}
+
 const rendus={}, cChefs=L.layerGroup();
 function rendreNiveaux(){
+  appliquerEchelle();
   NIV_ORDRE.slice().reverse().forEach(k=>{
     if(rendus[k]){map.removeLayer(rendus[k]);delete rendus[k];}
     if(NIVEAUX[k].on&&NIVEAUX[k].faire) rendus[k]=NIVEAUX[k].faire().addTo(map);
@@ -1204,12 +1289,13 @@ function rendreNiveaux(){
   rendreChefs();
   if(cAtlas&&cAtlas.bringToFront) cAtlas.bringToFront();
   cPoints.bringToFront&&cPoints.bringToFront();
-  boutonsNiveaux(); legende();
+  boutonsNiveaux(); legende(); majBadgeEchelle();
 }
 function rendreChefs(){
   cChefs.clearLayers(); cChefs.addTo(map);
   chefsRetenus(k=>NIVEAUX[k]&&NIVEAUX[k].on, c=>{
     if(!garde(chefDR(c))) return false;
+    if(!pointDansVue(c[1],c[2])) return false;     /* hors de la vue : inutile d'étiqueter */
     if(portagePays()) return true;
     const rg={dr:3,zone:4,region:5,dept:6,sp:7,cadr:8}[PORTEE.niveau];
     return rg===undefined||c[rg]===PORTEE.i;
@@ -1245,7 +1331,11 @@ function boutonsNiveaux(){
   $("#niveaux").innerHTML=bloc("limite")+noteCouverture();
   $("#niveauxChefs").innerHTML=bloc("chef");
   [$("#niveaux"),$("#niveauxChefs")].forEach(c=>c.querySelectorAll(".bascule").forEach(b=>b.onclick=()=>{
+    AUTO_ECHELLE=false;
     NIVEAUX[b.dataset.k].on=!NIVEAUX[b.dataset.k].on;rendreNiveaux();}));
+  const be=$("#btnEchelle");
+  if(be){ be.classList.toggle("on",AUTO_ECHELLE); be.setAttribute("aria-pressed",AUTO_ECHELLE);
+          be.onclick=()=>basculerEchelle(); }
 }
 
 function chipsZones(){
@@ -1276,6 +1366,16 @@ function segmentFond(){
     noms.forEach(n=>{if(map.hasLayer(fonds[n])) map.removeLayer(fonds[n]);});
     fonds[b.dataset.f].addTo(map).bringToBack();
     $("#fondCarte").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));});}
+
+const badge=L.control({position:"topright"});
+badge.onAdd=function(){
+  const d=L.DomUtil.create("div","badgeEch"); d.id="badgeEchelle";
+  L.DomEvent.disableClickPropagation(d);
+  d.onclick=()=>basculerEchelle();
+  d.title="Cliquer pour passer de l’affichage par échelle à l’affichage manuel";
+  return d;
+};
+badge.addTo(map);
 
 const lg=L.control({position:"bottomright"});
 let lgDiv=null, lgOuvert=true;
@@ -1473,8 +1573,8 @@ $("#horo").textContent="";
 $("#btnVider").onclick=()=>{RES=[];cPoints.clearLayers();cCorr.clearLayers();dessiner();
   if(typeof viderImports==="function") viderImports();};
 $("#btnCsv").onclick=exporter;
-$("#btnTout").onclick=()=>{Object.values(NIVEAUX).forEach(n=>n.on=true);rendreNiveaux();};
-$("#btnRien").onclick=()=>{Object.values(NIVEAUX).forEach(n=>n.on=false);rendreNiveaux();};
+$("#btnTout").onclick=()=>{AUTO_ECHELLE=false;Object.values(NIVEAUX).forEach(n=>n.on=true);rendreNiveaux();};
+$("#btnRien").onclick=()=>{AUTO_ECHELLE=false;Object.values(NIVEAUX).forEach(n=>n.on=false);rendreNiveaux();};
 $("#fZone").onchange=dessiner;$("#fRech").oninput=dessiner;
 $("#fSeuil").oninput=e=>{$("#vSeuil").textContent=e.target.value;
   if(RES.length) charger(RES.map(r=>r.saisi));};
@@ -1487,6 +1587,15 @@ zd.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("#fichier
 zd.addEventListener("drop",e=>{[...e.dataTransfer.files].forEach(lireFichier);});
 $("#burger").onclick=()=>$("#panneau").classList.toggle("ouvert");
 map.on("click",()=>{if(window.innerWidth<=820) $("#panneau").classList.remove("ouvert");});
+/* recomposition à l'échelle : au zoom tout de suite, au simple déplacement en différé */
+let _echT=null, _echPalier=null;
+map.on("zoomend",()=>{ if(!AUTO_ECHELLE){majBadgeEchelle();return;}
+  clearTimeout(_echT); _echPalier=palierEchelle().z; rendreNiveaux(); });
+map.on("moveend",()=>{ if(!AUTO_ECHELLE) return;
+  const p=palierEchelle();
+  if(p.z===_echPalier && !p.lim.some(k=>BORNE_VUE[k]) && !p.chefs.some(k=>BORNE_VUE[k])) return;
+  _echPalier=p.z;
+  clearTimeout(_echT); _echT=setTimeout(rendreNiveaux,180); });
 charger([]);
 
 /* ==================================================================================
@@ -1945,8 +2054,12 @@ const PLANCHE_NIV={
 function niveauxPlanche(k){
   const P=PLANCHE_NIV[k]||PLANCHE_NIV.dr;
   const lim=new Set(P.lim), chefs=new Set(P.chefs);
-  LIMITES.forEach(Li=>{if(NIVEAUX[Li.k]&&NIVEAUX[Li.k].on) lim.add(Li.k);});
-  CHEFSN.forEach(C=>{if(NIVEAUX[C.k]&&NIVEAUX[C.k].on) chefs.add(C.k);});
+  /* en affichage automatique, la planche garde la composition prévue pour son emprise :
+     le zoom de l'écran ne doit pas décider de ce qui s'imprime */
+  if(!AUTO_ECHELLE){
+    LIMITES.forEach(Li=>{if(NIVEAUX[Li.k]&&NIVEAUX[Li.k].on) lim.add(Li.k);});
+    CHEFSN.forEach(C=>{if(NIVEAUX[C.k]&&NIVEAUX[C.k].on) chefs.add(C.k);});
+  }
   return {lim:lim,chefs:chefs};
 }
 async function planche(sel,o){

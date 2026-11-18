@@ -1,0 +1,53 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'ci.anader.webmap'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "ci.anader.webmap"
+        minSdk 21
+        targetSdk 34
+        versionCode (project.hasProperty('verCode') ? project.verCode.toInteger() : 1)
+        versionName (project.hasProperty('verName') ? project.verName : "1.0")
+    }
+
+    signingConfigs {
+        anader {
+            /* Clé de signature fournie par les secrets GitHub, si elle existe.
+               Sans secrets, la version est signée avec la clé de débogage :
+               l'APK s'installe quand même. */
+            def ks = System.getenv("KEYSTORE_FILE")
+            if (ks != null && !ks.isEmpty()) {
+                storeFile file(ks)
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            def ks = System.getenv("KEYSTORE_FILE")
+            if (ks != null && !ks.isEmpty()) {
+                signingConfig = signingConfigs.anader
+            } else {
+                signingConfig = signingConfigs.debug
+            }
+        }
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

@@ -1,0 +1,83 @@
+name: APK WebMapANADER
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  construire:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Compléter le SDK Android
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKM" ]; then SDKM="$(command -v sdkmanager || true)"; fi
+          if [ -n "$SDKM" ] && [ -x "$SDKM" ]; then
+            yes | "$SDKM" --licenses > /dev/null 2>&1 || true
+            "$SDKM" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+          fi
+          echo "ANDROID_HOME=$ANDROID_HOME"
+
+      - name: Préparer la clé de signature
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/anader.jks"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/anader.jks" >> "$GITHUB_ENV"
+            echo "Cle de signature ANADER installee."
+          else
+            echo "Pas de secret KEYSTORE_B64 : signature de debogage."
+          fi
+
+      - name: Compiler l'APK
+        working-directory: android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -PverCode=${{ github.run_number }} \
+            -PverName=1.${{ github.run_number }}
+
+      - name: Renommer l'APK
+        run: |
+          mkdir -p livraison
+          cp android/app/build/outputs/apk/release/*.apk \
+             "livraison/WebMapANADER-1.${{ github.run_number }}.apk"
+          ls -l livraison
+
+      - name: Joindre l'APK à l'exécution
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebMapANADER-APK
+          path: livraison/*.apk
+
+      - name: Publier l'APK en téléchargement
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: apk-1.${{ github.run_number }}
+          FICHIER: livraison/WebMapANADER-1.${{ github.run_number }}.apk
+        run: |
+          NOTE="Version Android connectee de la plateforme WebMapANADER. Telecharger le fichier .apk sur le telephone, l ouvrir, puis autoriser l installation depuis cette source si Android le demande. ANADER - DMAOPAG / DGRM / Cellule Geomatique."
+          gh release create "$TAG" "$FICHIER" --title "WebMapANADER - APK 1.${{ github.run_number }}" --notes "$NOTE" \
+            || gh release upload "$TAG" "$FICHIER" --clobber

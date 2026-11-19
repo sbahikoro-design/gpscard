@@ -1,0 +1,51 @@
+{
+  "name": "webmapanader",
+  "productName": "WebMapANADER",
+  "version": "1.0.0",
+  "description": "Plateforme cartographique ANADER — version Windows",
+  "author": "ANADER — DMAOPAG / DGRM / Cellule Géomatique",
+  "license": "UNLICENSED",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable nsis"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "ci.anader.webmap",
+    "productName": "WebMapANADER",
+    "copyright": "ANADER",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "site/**/*",
+      "build/icon.ico"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    },
+    "portable": {
+      "artifactName": "WebMapANADER-${version}-portable.exe",
+      "requestExecutionLevel": "user"
+    },
+    "nsis": {
+      "artifactName": "WebMapANADER-${version}-installation.exe",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "WebMapANADER"
+    }
+  }
+}

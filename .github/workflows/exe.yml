@@ -1,0 +1,65 @@
+name: EXE WebMapANADER
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'windows/**'
+      - 'index.html'
+      - '.github/workflows/exe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  construire:
+    runs-on: windows-latest
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Préparer la copie hors connexion
+        working-directory: windows
+        run: node embarquer.js
+
+      - name: Numéroter la version
+        working-directory: windows
+        run: npm version "1.${{ github.run_number }}.0" --no-git-tag-version --allow-same-version
+
+      - name: Installer les dépendances
+        working-directory: windows
+        run: npm install --no-audit --no-fund
+
+      - name: Construire les exécutables
+        working-directory: windows
+        run: npx electron-builder --win portable nsis --publish never
+
+      - name: Lister ce qui a été produit
+        working-directory: windows
+        shell: bash
+        run: ls -l dist/*.exe
+
+      - name: Joindre les exécutables à l'exécution
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebMapANADER-EXE
+          path: windows/dist/*.exe
+
+      - name: Publier les exécutables en téléchargement
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: exe-1.${{ github.run_number }}
+        run: |
+          NOTE="WebMapANADER pour Windows. Le fichier -portable.exe se lance par un simple double-clic, sans rien installer. Le fichier -installation.exe installe l application avec un raccourci sur le Bureau. Au premier lancement, Windows peut afficher un avertissement SmartScreen : cliquer sur Informations complementaires puis Executer quand meme. ANADER - DMAOPAG / DGRM / Cellule Geomatique."
+          gh release create "$TAG" windows/dist/*.exe \
+            --title "WebMapANADER - Windows 1.${{ github.run_number }}" \
+            --notes "$NOTE" \
+          || gh release upload "$TAG" windows/dist/*.exe --clobber

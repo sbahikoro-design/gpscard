@@ -46,6 +46,17 @@ function creerFenetre() {
     fenetre.show();
   });
 
+  /* Raccourcis qui ouvriraient le code de la plateforme : F12, Ctrl+Maj+I/J/C
+     et Ctrl+U. La fenêtre est un poste de consultation, pas un atelier. */
+  fenetre.webContents.on('before-input-event', (evenement, touche) => {
+    const k = String(touche.key || '').toLowerCase();
+    if (k === 'f12'
+      || (touche.control && touche.shift && (k === 'i' || k === 'j' || k === 'c'))
+      || (touche.control && !touche.shift && k === 'u')) {
+      evenement.preventDefault();
+    }
+  });
+
   /* Les liens vers d'autres sites partent dans le navigateur du poste. */
   fenetre.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) shell.openExternal(url);
@@ -150,9 +161,9 @@ function construireMenu() {
         { type: 'separator' },
         { label: 'Agrandir', accelerator: 'CmdOrCtrl+Plus', role: 'zoomIn' },
         { label: 'Réduire', accelerator: 'CmdOrCtrl+-', role: 'zoomOut' },
-        { label: 'Taille normale', accelerator: 'CmdOrCtrl+0', role: 'resetZoom' },
-        { type: 'separator' },
-        { label: 'Outils de développement', accelerator: 'F12', role: 'toggleDevTools' }
+        { label: 'Taille normale', accelerator: 'CmdOrCtrl+0', role: 'resetZoom' }
+        /* les outils de développement ont été retirés du menu : ils ouvraient
+           le code de la plateforme à qui passe par là */
       ]
     },
     {
@@ -182,9 +193,10 @@ function construireMenu() {
               type: 'info',
               title: 'À propos',
               message: 'WebMapANADER ' + app.getVersion(),
+              /* l'adresse technique de la plateforme ne regarde pas l'utilisateur :
+                 la fenêtre ne porte que la mention d'origine de la charte ANADER */
               detail:
                 'Plateforme cartographique de l\'ANADER.\n\n'
-                + 'Adresse en ligne :\n' + ACCUEIL + '\n\n'
                 + 'Source : ANADER\n'
                 + 'Auteur : DMAOPAG / DGRM / Cellule Géomatique',
               buttons: ['Fermer']

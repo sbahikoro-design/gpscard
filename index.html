@@ -338,7 +338,22 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
 .tabComptes tr.soi td{background:#F5F7F3}
 #cpListe,#cpStats{max-height:38vh;overflow-y:auto;margin-top:9px}
 #cpStats h4{margin:13px 0 4px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--vert)}
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.kpi{cursor:pointer;transition:background .12s,border-color .12s}
+.kpi:hover{background:#EDF1E9}
+.kpi:focus-visible{outline:2px solid var(--or);outline-offset:2px}
+.kpi.on{background:#EAF0E4;border-left-color:var(--vert)}
+.kpi .fl{display:block;font-size:9px;color:#A5A294;margin-top:1px}
+.kpi.on .fl{color:var(--vert)}
+.tabComptes td.mod{cursor:text;border-bottom:1px dashed #D9D4C4}
+.tabComptes td.mod:hover{background:#FBF9F2;box-shadow:inset 0 0 0 1px #E6E1D0}
+.tabComptes input.cel{width:100%;font:inherit;padding:2px 4px;background:#fff;
+  border:1px solid var(--or);border-radius:3px}
+.tabComptes td.mdp b{font-family:ui-monospace,Menlo,Consolas,monospace;
+  letter-spacing:.03em;background:#FBF4DF;padding:1px 5px;border-radius:3px}
+#cpAide{font-size:11px;color:var(--txt2);margin-top:7px;line-height:1.45}
+/* la liste des comptes porte deux colonnes de plus : elle a besoin d'air */
+#modaleComptes .fenetre.large{width:min(920px,100%)}
 .kpi{background:#F5F7F3;border-left:3px solid var(--or);padding:7px 9px}
 .kpi b{display:block;font-size:17px;color:var(--vert)}
 .kpi span{font-size:10.5px;color:var(--txt2)}
@@ -405,7 +420,7 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
     <div class="fil" id="atFil"></div>
     <div class="chiffres" id="atChiffres"></div>
     <div class="rangee" style="margin-top:11px">
-      <button class="btn" id="btnPng" style="flex:1">Imprimer la carte</button>
+      <button class="btn" id="btnPng" style="flex:1">Éditer ou imprimer la carte</button>
       <button class="btn sec" id="btnRecadrer">Recadrer</button>
     </div>
   </div>
@@ -528,9 +543,15 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
           Autoriser ce compte à créer des comptes sous sa propre portée</label>
         <div class="rangee" style="margin-top:9px">
           <button class="btn" id="cpCreer">Créer le compte</button>
+          <button class="btn sec" id="cpAnnuler" hidden>Annuler la modification</button>
         </div>
         <div id="cpEtat"></div>
         <div id="cpListe"></div>
+        <p id="cpAide">Dans la liste, les cellules soulignées en pointillé se corrigent
+          d’un clic : nom, courriel et mot de passe. <b>Modifier</b> reprend le compte
+          dans les champs ci-dessus pour changer son centre de coût ou sa délégation.
+          L’identifiant, lui, ne change pas : c’est la clé qui relie le compte à son
+          historique d’activité.</p>
       </div>
       <div id="cpVoletS" hidden>
         <label class="champ" for="cpPeriode">Période</label>
@@ -638,8 +659,13 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
       <p>La hiérarchie est portée par la couleur et l’épaisseur du trait, jamais par le seul libellé : limite d’État en pointillé, direction régionale au remplissage de couleur, région administrative en orange, zone ANADER en trait noir plein, département plus fin, sous-préfecture en tirets, CADR en tirets rouges.</p>
       <p>Chaque site ne porte qu’un seul symbole, celui de son rang le plus élevé : le logo cerclé pour la Direction Générale et les chefs-lieux de DR, le carré noir pour les chefs-lieux de région, le rond gris pour les départements, le rond blanc pour les sous-préfectures, le rond jaune pour les CADR. Le bloc <b>Niveaux de visualisation</b> permet d’allumer ou d’éteindre chaque niveau ; la légende se recompose automatiquement.</p>
 
-      <h4>4. Éditer une planche PNG</h4>
-      <p>Le bouton <b>Imprimer la carte</b> ouvre la fenêtre d’impression. Choisir le format de feuille, de l’A5 à l’A0, en paysage ou en portrait, puis la résolution : 150 ppp pour l’écran et le courriel, 200 ppp pour un rapport imprimé, 300 ppp pour une impression fine. Le fichier sort en <b>PNG</b>, image à insérer dans un document, ou en <b>PDF</b>, page à la taille exacte du format retenu — un A1 imprimé depuis ce PDF sortira à ses 841 × 594 mm sans réglage particulier chez l’imprimeur. La planche reprend les niveaux activés sur la carte, le cartouche de rattachement, les chiffres clés, l’échelle, la rose des vents, le carton de situation et la légende correspondante.</p>
+      <h4>4. Éditer ou imprimer une carte</h4>
+      <p>Le bouton <b>Éditer ou imprimer la carte</b> ouvre la fenêtre d’édition. Choisir le format de feuille, de l’A5 à l’A0, en paysage ou en portrait, puis la résolution : 150 ppp pour l’écran et le courriel, 200 ppp pour un rapport imprimé, 300 ppp pour une impression fine. La planche reprend les niveaux activés sur la carte, le cartouche de rattachement, les chiffres clés, l’échelle, la rose des vents, le carton de situation et la légende correspondante.</p>
+      <p>Deux sorties, comptées séparément dans les statistiques. <b>Éditer la carte</b> produit un
+      fichier — <b>PNG</b>, image à insérer dans un document, ou <b>PDF</b>, page à la taille exacte
+      du format retenu : un A1 imprimé depuis ce PDF sortira à ses 841 × 594 mm sans réglage
+      particulier chez l’imprimeur. <b>Envoyer à l’imprimante</b> ouvre directement la fenêtre
+      d’impression du poste, la carte seule occupant la feuille, sans passer par un fichier.</p>
       <p>Le bouton <b>Éditer le niveau inférieur</b> produit d’un coup toutes les cartes filles de la délimitation courante — par exemple les zones d’une DR ou les sous-préfectures d’un département — pour constituer un atlas.</p>
 
       <h4>5. Déposer des données</h4>
@@ -651,20 +677,42 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
       <p>Le tableau se filtre par statut, par direction régionale et par recherche libre. L’export CSV reprend le diagnostic complet, coordonnées corrigées comprises. Le bouton <b>Vider</b> efface à la fois les points contrôlés et les couches importées.</p>
 
       <h4>6. Cartothèque</h4>
-      <p>Le bouton <b>Cartothèque</b> du bandeau donne accès à l’archive des cartes. On y trouve deux natures : les <b>cartes de référence</b>, déposées par l’administration, et les <b>cartes des centres de coût</b>, versées automatiquement à chaque impression. La recherche porte sur l’entité, l’auteur et le commentaire ; un filtre sépare les deux natures.</p>
+      <p>Le bouton <b>Cartothèque</b> du bandeau donne accès à l’archive des cartes. On y trouve deux natures : les <b>cartes de référence</b>, déposées par l’administration, et les <b>cartes des centres de coût</b>, versées automatiquement à chaque édition de fichier. La recherche porte sur l’entité, l’auteur et le commentaire ; un filtre sépare les deux natures.</p>
       <p>Chaque carte s’ouvre dans le navigateur par <b>Consulter</b> ou s’enregistre sur le poste par <b>Télécharger</b>. Une étiquette indique le type de fichier — PDF, PNG ou JPEG — et, pour les cartes issues de la plateforme, le format de feuille et la résolution.</p>
       <p>L’administration dépose ses cartes de référence au format <b>PNG, JPEG ou PDF</b>, plusieurs fichiers à la fois, avec un intitulé et un commentaire communs. Chaque fichier est limité à 18 Mo : au-delà, réduisez la résolution avant dépôt. Les cartes anciennes, scannées ou produites hors plateforme trouvent ainsi leur place dans la même archive.</p>
-      <p>Toute carte imprimée depuis une session ouverte <b>exige un commentaire</b>, au même titre qu’un tableau : ce que montre la carte, à quoi elle sert, à quelle date les données se rapportent. Sans commentaire, l’impression est refusée. La carte part alors dans votre dossier de téléchargement <i>et</i> dans la cartothèque, où chacun la retrouve avec sa lecture. L’auteur peut retirer ses propres cartes ; l’administrateur, toutes.</p>
+      <p>Toute carte <b>éditée en fichier</b> depuis une session ouverte exige un commentaire, au même titre qu’un tableau : ce que montre la carte, à quoi elle sert, à quelle date les données se rapportent. Sans commentaire, l’édition est refusée. La carte part alors dans votre dossier de téléchargement <i>et</i> dans la cartothèque, où chacun la retrouve avec sa lecture. L’auteur peut retirer ses propres cartes ; l’administrateur, toutes. L’envoi direct à l’imprimante, qui ne produit pas de fichier, n’alimente pas la cartothèque : il est seulement enregistré dans le journal, au compte de celui qui imprime.</p>
 
       <h4>7. Administration</h4>
-      <p>Chaque ligne de la liste porte deux boutons. <b>Réinitialiser</b> délivre un nouveau mot de passe provisoire, à transmettre à l’intéressé, qui devra de nouveau passer par l’écran de première connexion. <b>Supprimer</b> révoque l’accès définitivement : les sessions ouvertes sont fermées, et les comptes que la personne avait elle-même créés vous sont rattachés pour qu’aucun accès ne reste orphelin. L’historique d’activité, lui, est conservé dans le journal. Vous ne pouvez pas supprimer votre propre compte.</p>
+      <p><b>Corriger un compte sans le refaire.</b> Dans la liste, les cellules soulignées en
+      pointillé — nom, courriel, mot de passe — se corrigent d’un clic : taper la nouvelle
+      valeur, <i>Entrée</i> pour enregistrer, <i>Échap</i> pour renoncer. Rien d’autre n’est
+      touché. Le bouton <b>Modifier</b> reprend le compte dans les champs du haut, pour changer
+      son centre de coût ou son droit de déléguer ; <i>Annuler la modification</i> rend le
+      formulaire à la création d’un compte neuf. L’identifiant, lui, ne change jamais : c’est la
+      clé qui relie le compte à son historique d’activité.</p>
+      <p><b>La colonne Mot de passe.</b> Elle affiche le mot de passe <i>délivré par
+      l’administration</i> — celui de la création, d’une réinitialisation, ou celui que vous
+      saisissez vous-même dans la cellule. Dès que l’intéressé choisit le sien, la case indique
+      <i>choisi par l’intéressé</i> et le mot de passe n’est plus lisible par personne : il n’est
+      conservé nulle part en clair, seulement sous forme d’empreinte. Pour redonner la main à
+      quelqu’un qui a oublié le sien, écrivez un mot de passe dans sa cellule, ou cliquez
+      <b>Réinitialiser</b>. Le mot de passe de l’administrateur se change de la même façon, dans
+      sa propre ligne.</p>
+      <p><b>Supprimer</b> révoque l’accès définitivement : les sessions ouvertes sont fermées, et les comptes que la personne avait elle-même créés vous sont rattachés pour qu’aucun accès ne reste orphelin. L’historique d’activité, lui, est conservé dans le journal. Vous ne pouvez pas supprimer votre propre compte.</p>
       <p>Le bouton <b>Administration</b> demande un code. Il permet de changer le nom de l’application, l’organisation, le sous-titre et les coordonnées de maintenance. Ces éléments sont repris partout, y compris dans le pied des planches et le nom des fichiers exportés.</p>
 
       <h4>8. Comptes et mise en ligne</h4>
       <p>Hors connexion au service, l’application fonctionne en <b>mode local</b> : accès complet, aucune trace. Une fois l’adresse du service renseignée dans la fenêtre Administration, l’ouverture d’une session devient obligatoire.</p>
       <p>Les niveaux attribuables suivent la hiérarchie : Direction Générale, Direction Régionale, zone ANADER, CADR. Pour le niveau CADR, la sélection se fait par cases à cocher, un agent pouvant couvrir plusieurs CADR à la fois ; aux autres niveaux, l’entité est unique.</p>
       <p>Chaque compte reçoit une <b>portée</b> — Direction Générale, Direction Régionale, zone ou CADR — et ne voit que cette emprise et ce qu’elle contient : la carte, les listes, la recherche et l’export s’y limitent. Un responsable autorisé à déléguer crée des comptes <b>à l’intérieur de sa propre portée et à un niveau inférieur au sien</b> : un chef de zone crée ses agents CADR, jamais l’inverse.</p>
-      <p>À la création, l’application affiche un mot de passe provisoire à transmettre à l’intéressé. À sa première connexion, celui-ci renseigne son adresse électronique et choisit son propre mot de passe. L’onglet Statistiques donne les consultations, les éditions de planches, les emprises les plus demandées et l’activité par compte.</p>
+      <p>À la création, l’application affiche un mot de passe provisoire à transmettre à l’intéressé. À sa première connexion, celui-ci renseigne son adresse électronique et choisit son propre mot de passe.</p>
+      <p><b>L’onglet Statistiques</b> compte, sur la période choisie, les connexions, les cartes
+      consultées, les <b>cartes éditées</b> — celles qui sont sorties en fichier — et les
+      <b>cartes imprimées</b> — celles qui sont parties à l’imprimante —, ainsi que le nombre de
+      comptes ayant eu une activité. <b>Chaque indicateur s’ouvre d’un clic</b> : la liste des
+      événements s’affiche dessous, avec la date, le compte, le centre de coût et l’emprise
+      concernée. Un second clic referme la liste. Suivent les emprises les plus éditées et
+      l’activité compte par compte.</p>
 
       <h4>9. Limites connues</h4>
       <p>Les limites de CADR ne sont disponibles que pour la Direction Régionale du Nord-Ouest ; le fichier national correspondant n’a pas encore été fourni. Les fonds de plan en ligne nécessitent une connexion : sans réseau, la carte reste utilisable sur fond uni et les planches s’éditent normalement.</p>
@@ -683,7 +731,7 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
 <div id="modale" hidden>
   <div class="fenetre" role="dialog" aria-modal="true" aria-labelledby="exTitre">
     <div class="tete">
-      <h3 id="exTitre">Imprimer la carte</h3>
+      <h3 id="exTitre">Éditer ou imprimer la carte</h3>
       <p>Image PNG prête à insérer dans un rapport ou à imprimer</p>
     </div>
     <div class="corps">
@@ -742,7 +790,8 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
       <div id="exEtat">Prêt.</div>
     </div>
     <div class="pied">
-      <button class="btn" id="btnGenerer">Imprimer la carte</button>
+      <button class="btn" id="btnGenerer">Éditer la carte</button>
+      <button class="btn sec" id="btnImprimer">Envoyer à l’imprimante</button>
       <button class="btn sec" id="btnLot">Éditer le niveau inférieur</button>
       <button class="btn sec" id="btnFermer" style="margin-left:auto">Fermer</button>
     </div>
@@ -961,6 +1010,9 @@ const ACCENTS={ODIENNE:"ODIENNÉ",SEGUELA:"SÉGUÉLA",BERE:"BÉRÉ",TIEME:"TIÉM
   SEGUELON:"SÉGUÉLON",FEREMANDOUGOU:"FÉRÉMANDOUGOU",DIOULATIEDOUGOU:"DIOULATIÈDOUGOU",
   "NOR-EST":"NORD-EST"};
 const bel=s=>ACCENTS[String(s||"").toUpperCase()]||String(s||"");
+/* échappement pour tout texte venant du serveur et réinjecté en HTML */
+const ech=t=>String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+  .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 function casseTitre(s){
   s=String(s||"");
   if(s!==s.toUpperCase()) return s;
@@ -2629,6 +2681,44 @@ async function exporterPng(){
   }catch(err){etat("Impression impossible : "+err.message);}
   b.disabled=false;
 }
+/* Envoi direct à l'imprimante. La planche est composée exactement comme pour
+   le fichier, puis posée dans un cadre caché au format de la feuille : la
+   fenêtre d'impression du poste s'ouvre sur la carte seule, sans l'interface.
+   L'événement est journalisé — c'est ce que compte « Cartes imprimées ». */
+async function imprimerCarte(){
+  const b=$("#btnImprimer"), o=optionsExport();
+  b.disabled=true; etat("Composition de la carte pour l’imprimante…");
+  let cadre=null;
+  try{
+    const cv=await planche(SEL,o);
+    const F=FORMATS[o.format];
+    const image=cv.toDataURL("image/png");
+    cadre=document.createElement("iframe");
+    cadre.setAttribute("aria-hidden","true");
+    cadre.style.cssText="position:fixed;right:0;bottom:0;width:1px;height:1px;opacity:0;border:0";
+    document.body.appendChild(cadre);
+    const doc=cadre.contentWindow.document;
+    doc.open();
+    doc.write('<!doctype html><html><head><meta charset="utf-8">'+
+      '<title>WebMapANADER</title><style>'+
+      '@page{size:'+F.w+'mm '+F.h+'mm;margin:0}'+
+      'html,body{margin:0;padding:0;background:#fff}'+
+      'img{width:'+F.w+'mm;height:'+F.h+'mm;object-fit:contain;display:block}'+
+      '</style></head><body><img alt="" src="'+image+'"></body></html>');
+    doc.close();
+    const lancer=()=>{ try{ cadre.contentWindow.focus(); cadre.contentWindow.print(); }catch(e){} };
+    const img=doc.images[0];
+    if(img&&!img.complete) img.onload=lancer; else setTimeout(lancer,150);
+    journal("impression",{niveau:SEL.k,entite:ent(SEL.k,SEL.i).nom,
+      format:o.format,resolution:dpiUtile(F,o.dpi)});
+    etat("Carte envoyée à l’imprimante — "+F.lib+".");
+    setTimeout(()=>{ if(cadre) cadre.remove(); },120000);
+  }catch(err){
+    if(cadre) cadre.remove();
+    etat("Impression impossible : "+err.message);
+  }
+  b.disabled=false;
+}
 function etat(t){const e=$("#exEtat"); if(e) e.textContent=t;}
 
 /* ---------- branchements de la fenêtre d’export ---------- */
@@ -2637,7 +2727,7 @@ function ouvrirExport(){
   const lib={pays:"du territoire national",dr:"de la Direction Régionale",zone:"de la zone",
     region:"de la région",dept:"du département",sp:"de la sous-préfecture",
     cadr:"du CADR",loc:"de la localité"}[SEL.k]||"";
-  $("#exTitre").textContent="Imprimer la carte "+lib;
+  $("#exTitre").textContent="Éditer ou imprimer la carte "+lib;
   $("#exCible").innerHTML='<b>'+titre(ent(SEL.k,SEL.i))+'</b><span>'+
     chaine(SEL.k,SEL.i).map(x=>bel(x.nom)).join(" › ")+'</span>';
   const dispo=niveauxInferieurs(SEL.k,SEL.i);
@@ -2657,6 +2747,7 @@ $("#btnFermer").onclick=()=>{$("#modale").hidden=true;};
 $("#modale").addEventListener("click",e=>{if(e.target.id==="modale")$("#modale").hidden=true;});
 document.addEventListener("keydown",e=>{if(e.key==="Escape")$("#modale").hidden=true;});
 $("#btnGenerer").onclick=exporterPng;
+$("#btnImprimer").onclick=imprimerCarte;
 $("#btnLot").onclick=()=>{$("#modale").hidden=true;ouvrirLot();};
 choisir("pays",0);
 
@@ -3363,7 +3454,7 @@ function entitesDelegables(niv){
   return trier(ATLAS.niveaux[src].map((a,j)=>[j,a.nom]).filter(o=>dansPortee(src,o[0])));
 }
 function ouvrirComptes(){
-  majFormulaireCompte();
+  quitterModif();
   $("#cpEtat").textContent="";
   $("#modaleComptes").hidden=false;
   listerComptes();
@@ -3401,6 +3492,19 @@ async function creerCompte(){
     ids=[+sel.value];
     libelle=sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:"";
   }
+  if(MODIF){
+    const nom=$("#cpNom").value.trim();
+    if(!nom){$("#cpEtat").textContent="Le nom ne peut pas être vide.";return;}
+    $("#cpCreer").disabled=true; $("#cpEtat").textContent="Enregistrement…";
+    try{
+      const r=await appelAPI("modifierCompte",{login:MODIF, nom:nom, niveau:k,
+        id:ids[0], ids:ids, libelle:libelle, peutCreer:$("#cpDeleguer").checked});
+      const q=MODIF; quitterModif();
+      $("#cpEtat").innerHTML='Compte <b>'+ech(q)+'</b> modifié — '+ech(r.modifie.join(", "))+'.';
+      listerComptes();
+    }catch(e){ $("#cpEtat").textContent=e.message; }
+    $("#cpCreer").disabled=false; return;
+  }
   const charge={nom:$("#cpNom").value.trim(), login:$("#cpLogin").value.trim(),
     niveau:k, id:ids[0], ids:ids, libelle:libelle,
     peutCreer:$("#cpDeleguer").checked};
@@ -3416,23 +3520,111 @@ async function creerCompte(){
   }catch(e){ $("#cpEtat").textContent=e.message; }
   $("#cpCreer").disabled=false;
 }
+let COMPTES=[], MODIF=null;
 async function listerComptes(){
   try{
     const d=await appelAPI("listerComptes");
+    COMPTES=d.comptes||[];
     $("#cpListe").innerHTML='<table class="tabComptes"><thead><tr><th>Nom</th><th>Identifiant</th>'+
-      '<th>Portée</th><th>Courriel</th><th>Dernière connexion</th><th></th></tr></thead><tbody>'+
-      d.comptes.map(c=>'<tr'+(c.soi?' class="soi"':'')+'><td>'+c.nom+(c.soi?' <i>(vous)</i>':'')+'</td>'+
-        '<td>'+c.login+'</td><td>'+c.portee+'</td>'+
-        '<td>'+(c.mail||'<i>non renseigné</i>')+'</td><td>'+(c.derniere||'—')+'</td>'+
-        '<td class="act"><button class="btn sec mini" data-l="'+c.login+'">Réinitialiser</button>'+
-        (c.soi?'':'<button class="btn sec mini sup" data-sup="'+c.login+'" data-nom="'+
-          String(c.nom).replace(/"/g,"&quot;")+'">Supprimer</button>')+
+      '<th>Centre de coût</th><th>Courriel</th><th>Mot de passe</th>'+
+      '<th>Dernière connexion</th><th></th></tr></thead><tbody>'+
+      COMPTES.map(c=>'<tr'+(c.soi?' class="soi"':'')+' data-login="'+ech(c.login)+'">'+
+        '<td class="mod" data-champ="nom" data-val="'+ech(c.nom)+'">'+ech(c.nom)+
+          (c.soi?' <i>(vous)</i>':'')+'</td>'+
+        '<td>'+ech(c.login)+'</td>'+
+        '<td>'+ech(c.portee)+'</td>'+
+        '<td class="mod" data-champ="mail" data-val="'+ech(c.mail||"")+'">'+
+          (c.mail?ech(c.mail):'<i>non renseigné</i>')+'</td>'+
+        '<td class="mod mdp" data-champ="motdepasse">'+
+          (c.provisoire?'<b>'+ech(c.provisoire)+'</b>'
+                       :'<i>choisi par l’intéressé</i>')+'</td>'+
+        '<td>'+ech(c.derniere||'—')+'</td>'+
+        '<td class="act"><button class="btn sec mini" data-mod="'+ech(c.login)+'">Modifier</button>'+
+        '<button class="btn sec mini" data-l="'+ech(c.login)+'">Réinitialiser</button>'+
+        (c.soi?'':'<button class="btn sec mini sup" data-sup="'+ech(c.login)+'" data-nom="'+
+          ech(c.nom)+'">Supprimer</button>')+
         '</td></tr>').join("")+
       '</tbody></table>';
     $("#cpListe").querySelectorAll("button[data-l]").forEach(b=>b.onclick=()=>reinitialiser(b.dataset.l));
+    $("#cpListe").querySelectorAll("button[data-mod]").forEach(b=>b.onclick=()=>modifierDepuisListe(b.dataset.mod));
     $("#cpListe").querySelectorAll("button[data-sup]").forEach(b=>
       b.onclick=()=>supprimerCompte(b.dataset.sup,b.dataset.nom));
-  }catch(e){ $("#cpListe").innerHTML='<div class="vide">'+e.message+'</div>'; }
+    $("#cpListe").querySelectorAll("td.mod").forEach(td=>td.onclick=()=>editerCellule(td));
+  }catch(e){ $("#cpListe").innerHTML='<div class="vide">'+ech(e.message)+'</div>'; }
+}
+
+/* ---------- correction d'une cellule, sans toucher au reste du compte ----------
+   Le mot de passe suit la même logique : ce que l'administration délivre reste
+   lisible ; ce que l'intéressé choisit ensuite ne l'est plus, et ne peut plus
+   l'être — il n'est conservé nulle part en clair. */
+function editerCellule(td){
+  if(td.querySelector("input")) return;
+  const tr=td.closest("tr"), login=tr.dataset.login, champ=td.dataset.champ;
+  const avant=td.innerHTML, val=td.dataset.val||"";
+  const i=document.createElement("input");
+  i.className="cel"; i.type="text";
+  i.value=(champ==="motdepasse")?"":val;
+  if(champ==="motdepasse") i.placeholder="nouveau mot de passe — 8 caractères minimum";
+  td.innerHTML=""; td.appendChild(i); i.focus(); i.select();
+  let fini=false;
+  const remettre=()=>{ td.innerHTML=avant; };
+  const valider=async()=>{
+    if(fini) return; fini=true;
+    const v=i.value.trim();
+    if(v===val){ remettre(); return; }
+    td.innerHTML='<i>enregistrement…</i>';
+    try{
+      if(champ==="motdepasse"){
+        if(v.length<8) throw new Error("Le mot de passe doit compter au moins 8 caractères");
+        await appelAPI("definirMotDePasse",{login:login,motdepasse:v});
+        $("#cpEtat").innerHTML='Mot de passe de <b>'+ech(login)+'</b> enregistré : <b>'+ech(v)+'</b>';
+      } else {
+        const charge={login:login}; charge[champ]=v;
+        const r=await appelAPI("modifierCompte",charge);
+        $("#cpEtat").textContent="Modification enregistrée ("+r.modifie.join(", ")+").";
+      }
+      listerComptes();
+    }catch(e){ $("#cpEtat").textContent=e.message; remettre(); }
+  };
+  i.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){ e.preventDefault(); valider(); }
+    else if(e.key==="Escape"){ e.preventDefault(); fini=true; remettre(); }
+  });
+  i.addEventListener("blur",valider);
+}
+
+/* ---------- reprise d'un compte dans le formulaire du haut ---------- */
+function modifierDepuisListe(login){
+  const c=COMPTES.find(x=>x.login===login);
+  if(!c) return;
+  MODIF=login;
+  majFormulaireCompte();
+  $("#cpNom").value=c.nom||"";
+  $("#cpLogin").value=c.login; $("#cpLogin").disabled=true;
+  if([...$("#cpNiveau").options].some(o=>o.value===c.niveau)) $("#cpNiveau").value=c.niveau;
+  majEntites();
+  if(c.niveau==="cadr"){
+    const ids=c.ids||[];
+    $("#cpMulti").querySelectorAll("input").forEach(x=>{x.checked=ids.indexOf(+x.value)>=0;});
+  } else if([...$("#cpEntite").options].some(o=>o.value===String(c.id))){
+    $("#cpEntite").value=String(c.id);
+  }
+  $("#cpDeleguer").checked=!!c.peutCreer;
+  majBoutonCompte();
+  $("#cpEtat").innerHTML='Modification du compte <b>'+ech(c.nom)+'</b> — corrigez les '+
+    'champs ci-dessus, puis enregistrez.';
+  $("#cpNom").focus();
+  const f=$("#cpNom"); if(f&&f.scrollIntoView) f.scrollIntoView({block:"nearest"});
+}
+function quitterModif(){
+  MODIF=null;
+  $("#cpLogin").disabled=false; $("#cpLogin").value=""; $("#cpNom").value="";
+  $("#cpDeleguer").checked=false;
+  majFormulaireCompte(); majBoutonCompte();
+}
+function majBoutonCompte(){
+  $("#cpCreer").textContent=MODIF?"Enregistrer les modifications":"Créer le compte";
+  $("#cpAnnuler").hidden=!MODIF;
 }
 async function reinitialiser(login){
   if(!confirm("Réinitialiser le mot de passe de "+login+" ?")) return;
@@ -3453,30 +3645,86 @@ async function supprimerCompte(login,nom){
     listerComptes();
   }catch(e){ $("#cpEtat").textContent=e.message; }
 }
+let STAT_QUOI=null;
 async function statistiques(){
   $("#cpStats").innerHTML='<div class="vide">Chargement…</div>';
   try{
     const d=await appelAPI("statistiques",{jours:+$("#cpPeriode").value});
     const s=d.stats;
+    const K=[["connexion","Connexions",s.connexions],
+             ["consultation","Cartes consultées",s.consultations],
+             ["edition","Cartes éditées",s.exports],
+             ["impression","Cartes imprimées",s.impressions||0],
+             ["comptes","Comptes actifs",s.actifs]];
     $("#cpStats").innerHTML=
-      '<div class="kpis">'+
-      [["Connexions",s.connexions],["Cartes consultées",s.consultations],
-       ["Planches éditées",s.exports],["Comptes actifs",s.actifs]]
-        .map(k=>'<div class="kpi"><b>'+k[1]+'</b><span>'+k[0]+'</span></div>').join("")+'</div>'+
+      '<div class="kpis">'+K.map(k=>'<div class="kpi" data-quoi="'+k[0]+'" tabindex="0" '+
+        'role="button" title="Afficher le détail"><b>'+k[2]+'</b><span>'+k[1]+'</span>'+
+        '<span class="fl">voir le détail</span></div>').join("")+'</div>'+
+      '<div id="cpDetail"></div>'+
       '<h4>Emprises les plus éditées</h4>'+
       (s.emprises.length?'<table class="tabComptes"><tbody>'+s.emprises.map(e=>
-        '<tr><td>'+e.nom+'</td><td>'+e.niveau+'</td><td><b>'+e.n+'</b></td></tr>').join("")+
+        '<tr><td>'+ech(bel(e.nom))+'</td><td>'+ech(e.niveau)+'</td><td><b>'+e.n+'</b></td></tr>').join("")+
         '</tbody></table>':'<div class="vide">Aucune édition sur la période.</div>')+
       '<h4>Activité par compte</h4>'+
       (s.comptes.length?'<table class="tabComptes"><thead><tr><th>Compte</th><th>Consultations</th>'+
-        '<th>Éditions</th><th>Dernière activité</th></tr></thead><tbody>'+
-        s.comptes.map(c=>'<tr><td>'+c.nom+'</td><td>'+c.vues+'</td><td>'+c.exports+'</td>'+
-        '<td>'+c.derniere+'</td></tr>').join("")+'</tbody></table>'
+        '<th>Cartes éditées</th><th>Cartes imprimées</th><th>Dernière activité</th></tr></thead><tbody>'+
+        s.comptes.map(c=>'<tr><td>'+ech(c.nom)+'</td><td>'+c.vues+'</td><td>'+c.exports+'</td>'+
+        '<td>'+(c.impressions||0)+'</td><td>'+ech(c.derniere)+'</td></tr>').join("")+'</tbody></table>'
         :'<div class="vide">Aucune activité sur la période.</div>');
-  }catch(e){ $("#cpStats").innerHTML='<div class="vide">'+e.message+'</div>'; }
+    $("#cpStats").querySelectorAll(".kpi").forEach(e=>{
+      e.onclick=()=>detailStat(e.dataset.quoi);
+      e.onkeydown=ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();detailStat(e.dataset.quoi);}};
+    });
+    if(STAT_QUOI) detailStat(STAT_QUOI,true);
+  }catch(e){ $("#cpStats").innerHTML='<div class="vide">'+ech(e.message)+'</div>'; }
+}
+/* Détail derrière un indicateur : un second clic referme la liste. */
+const TITRE_STAT={connexion:"Connexions",consultation:"Cartes consultées",
+  edition:"Cartes éditées",impression:"Cartes imprimées",comptes:"Comptes actifs"};
+async function detailStat(quoi,garder){
+  const zone=$("#cpDetail"); if(!zone) return;
+  if(!garder&&STAT_QUOI===quoi){
+    STAT_QUOI=null; zone.innerHTML="";
+    $("#cpStats").querySelectorAll(".kpi").forEach(e=>e.classList.remove("on"));
+    return;
+  }
+  STAT_QUOI=quoi;
+  $("#cpStats").querySelectorAll(".kpi").forEach(e=>e.classList.toggle("on",e.dataset.quoi===quoi));
+  zone.innerHTML='<div class="vide">Chargement…</div>';
+  try{
+    const d=await appelAPI("detailActivite",{quoi:quoi,jours:+$("#cpPeriode").value});
+    const L=d.lignes||[];
+    if(!L.length){ zone.innerHTML='<h4>'+TITRE_STAT[quoi]+'</h4>'+
+      '<div class="vide">Aucun événement sur la période.</div>'; return; }
+    let tetes, corps;
+    if(quoi==="comptes"){
+      tetes=["Compte","Centre de coût","Événements","Dernière activité"];
+      corps=L.map(x=>'<tr><td>'+ech(x.nom)+'</td><td>'+ech(x.portee)+'</td>'+
+        '<td><b>'+x.n+'</b></td><td>'+ech(x.derniere)+'</td></tr>');
+    } else if(quoi==="connexion"){
+      tetes=["Date","Compte","Centre de coût"];
+      corps=L.map(x=>'<tr><td>'+ech(x.date)+'</td><td>'+ech(x.nom)+'</td>'+
+        '<td>'+ech(x.portee)+'</td></tr>');
+    } else if(quoi==="consultation"){
+      tetes=["Date","Compte","Niveau","Entité"];
+      corps=L.map(x=>'<tr><td>'+ech(x.date)+'</td><td>'+ech(x.nom)+'</td>'+
+        '<td>'+ech(x.niveau)+'</td><td>'+ech(bel(x.entite))+'</td></tr>');
+    } else {
+      tetes=["Date","Compte","Niveau","Entité","Feuille"];
+      corps=L.map(x=>'<tr><td>'+ech(x.date)+'</td><td>'+ech(x.nom)+'</td>'+
+        '<td>'+ech(x.niveau)+'</td><td>'+ech(bel(x.entite))+'</td>'+
+        '<td>'+ech(String(x.format||"").split("|")[0].toUpperCase()+
+          (x.resolution?" · "+x.resolution+" ppp":""))+'</td></tr>');
+    }
+    zone.innerHTML='<h4>'+TITRE_STAT[quoi]+' — '+L.length+' ligne'+(L.length>1?'s':'')+
+      (L.length>=300?' (les 300 plus récentes)':'')+'</h4>'+
+      '<table class="tabComptes"><thead><tr>'+tetes.map(t=>'<th>'+t+'</th>').join("")+
+      '</tr></thead><tbody>'+corps.join("")+'</tbody></table>';
+  }catch(e){ zone.innerHTML='<div class="vide">'+ech(e.message)+'</div>'; }
 }
 $("#cpNiveau").onchange=majEntites;
 $("#cpCreer").onclick=creerCompte;
+$("#cpAnnuler").onclick=()=>{quitterModif();$("#cpEtat").textContent="";};
 $("#cpPeriode").onchange=statistiques;
 $("#cpOngletC").onclick=()=>{$("#cpVoletC").hidden=false;$("#cpVoletS").hidden=true;
   $("#cpOngletC").classList.add("on");$("#cpOngletS").classList.remove("on");};

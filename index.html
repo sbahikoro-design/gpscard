@@ -1,6 +1,11 @@
 <!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WebMapANADER · Géoportail national de l’ANADER</title>
+<!-- permet d'installer la plateforme comme application du poste, depuis Edge ou
+     Chrome, sans passer par un exécutable à télécharger -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1B5E20">
+<link rel="icon" href="icone-192.png" sizes="192x192" type="image/png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -187,6 +192,10 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
 .fenetre .tete h3{margin:0;font-size:14px;letter-spacing:.03em}
 .fenetre .tete p{margin:3px 0 0;font-size:11.5px;color:var(--or-cl)}
 .fenetre .corps{padding:14px 16px}
+#exChaine{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:6px 9px;margin:4px 0 11px}
+#exChaine select{width:100%}
+#exChaine select:disabled{background:#F6F4EC;color:#A5A294}
 #exCible{background:#F5F7F3;border-left:3px solid var(--or);padding:8px 11px;margin-bottom:13px}
 #exCible b{display:block;font-size:13.5px;color:var(--vert)}
 #exCible span{font-size:11px;color:var(--txt2)}
@@ -322,6 +331,16 @@ textarea#exCom,textarea#ctCom{width:100%;font:inherit;font-size:12px;padding:7px
 textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
 
 /* ====== session, comptes et statistiques ====== */
+#modaleApercu{position:fixed;inset:0;background:rgba(22,26,20,.72);display:flex;
+  align-items:center;justify-content:center;z-index:1400;padding:16px}
+#modaleApercu[hidden]{display:none}
+#modaleApercu .fenetre{width:min(1040px,100%)}
+#apFeuille{background:#EDEBE3;border:1px solid var(--trait);border-radius:4px;padding:10px;
+  display:flex;align-items:center;justify-content:center;min-height:180px}
+#apFeuille img{max-width:100%;max-height:58vh;display:block;
+  box-shadow:0 6px 22px rgba(0,0,0,.28);background:#fff}
+#apInfo{font-size:11.5px;color:var(--txt2);margin-bottom:9px;line-height:1.5}
+#apInfo b{color:var(--vert)}
 #modaleAuth,#modaleComptes{position:fixed;inset:0;background:rgba(22,26,20,.62);display:flex;
   align-items:center;justify-content:center;z-index:1400;padding:16px}
 #modaleAuth[hidden],#modaleComptes[hidden]{display:none}
@@ -597,6 +616,23 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
     </div>
   </div>
 </div>
+<div id="modaleApercu" hidden>
+  <div class="fenetre" role="dialog" aria-modal="true" aria-labelledby="apTitre">
+    <div class="tete">
+      <h3 id="apTitre">Aperçu avant impression</h3>
+      <p>La carte telle qu’elle sortira de l’imprimante</p>
+    </div>
+    <div class="corps">
+      <div id="apInfo"></div>
+      <div id="apFeuille"></div>
+    </div>
+    <div class="pied">
+      <button class="btn" id="apImprimer">Imprimer</button>
+      <button class="btn sec" id="apModifier">Modifier la carte</button>
+      <button class="btn sec" id="apAnnuler" style="margin-left:auto">Annuler</button>
+    </div>
+  </div>
+</div>
 <div id="modaleLot" hidden>
   <div class="fenetre large" role="dialog" aria-modal="true" aria-labelledby="lotTitre">
     <div class="tete">
@@ -689,11 +725,22 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
 
       <h4>4. Éditer ou imprimer une carte</h4>
       <p>Le bouton <b>Éditer ou imprimer la carte</b> ouvre la fenêtre d’édition. Choisir le format de feuille, de l’A5 à l’A0, en paysage ou en portrait, puis la résolution : 150 ppp pour l’écran et le courriel, 200 ppp pour un rapport imprimé, 300 ppp pour une impression fine. La planche reprend les niveaux activés sur la carte, le cartouche de rattachement, les chiffres clés, l’échelle, la rose des vents, le carton de situation et la légende correspondante.</p>
+      <p><b>Choisir l’emprise sans quitter la fenêtre.</b> Cinq listes en cascade, en haut
+      de la fenêtre, mènent du plus grand ensemble au plus fin : <b>Direction Régionale</b>,
+      puis <b>Zone ANADER</b>, <b>département</b>, <b>sous-préfecture</b> et <b>CADR</b>.
+      Chaque liste ne propose que ce qui reste atteignable sous les choix précédents, et la
+      dernière renseignée devient l’emprise de la planche : s’arrêter à la Zone édite la Zone,
+      descendre jusqu’au CADR édite le CADR. La carte se recadre au fur et à mesure, et le
+      cartouche rappelle le rattachement complet. Les listes se remplissent d’elles-mêmes
+      d’après l’entité déjà choisie sur la carte, et ne montrent jamais que ce que votre
+      portée autorise.</p>
       <p>Deux sorties, comptées séparément dans les statistiques. <b>Éditer la carte</b> produit un
       fichier — <b>PNG</b>, image à insérer dans un document, ou <b>PDF</b>, page à la taille exacte
       du format retenu : un A1 imprimé depuis ce PDF sortira à ses 841 × 594 mm sans réglage
-      particulier chez l’imprimeur. <b>Envoyer à l’imprimante</b> ouvre directement la fenêtre
-      d’impression du poste, la carte seule occupant la feuille, sans passer par un fichier.</p>
+      particulier chez l’imprimeur. <b>Envoyer à l’imprimante</b> ouvre d’abord un
+      <b>aperçu</b> : la carte y est montrée telle qu’elle sortira de la feuille. Trois issues —
+      <b>Imprimer</b> envoie à l’imprimante du poste, <b>Modifier la carte</b> revient aux
+      réglages, <b>Annuler</b> referme tout sans rien imprimer.</p>
       <p>Le bouton <b>Éditer le niveau inférieur</b> produit d’un coup toutes les cartes filles de la délimitation courante — par exemple les zones d’une DR ou les sous-préfectures d’un département — pour constituer un atlas.</p>
 
       <h4>5. Déposer des données</h4>
@@ -772,6 +819,14 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
       <p>Image PNG prête à insérer dans un rapport ou à imprimer</p>
     </div>
     <div class="corps">
+      <label class="champ">Emprise à éditer — du plus grand ensemble au plus fin</label>
+      <div id="exChaine">
+        <select id="exChDr" aria-label="Direction Régionale"></select>
+        <select id="exChZone" aria-label="Zone ANADER"></select>
+        <select id="exChDept" aria-label="Département"></select>
+        <select id="exChSp" aria-label="Sous-préfecture"></select>
+        <select id="exChCadr" aria-label="CADR"></select>
+      </div>
       <div id="exCible"></div>
       <div class="opts">
         <div><label class="champ" for="exFormat">Format</label>
@@ -2722,14 +2777,37 @@ async function exporterPng(){
    le fichier, puis posée dans un cadre caché au format de la feuille : la
    fenêtre d'impression du poste s'ouvre sur la carte seule, sans l'interface.
    L'événement est journalisé — c'est ce que compte « Cartes imprimées ». */
-async function imprimerCarte(){
+/* L'aperçu compose la planche une seule fois : l'image montrée est exactement
+   celle qui partira à l'imprimante, et l'impression ne recalcule rien. */
+let APERCU=null;
+async function apercuImpression(){
   const b=$("#btnImprimer"), o=optionsExport();
-  b.disabled=true; etat("Composition de la carte pour l’imprimante…");
-  let cadre=null;
+  b.disabled=true; etat("Composition de l’aperçu…");
   try{
     const cv=await planche(SEL,o);
     const F=FORMATS[o.format];
-    const image=cv.toDataURL("image/png");
+    APERCU={image:cv.toDataURL("image/png"), format:o.format,
+            dpi:dpiUtile(F,o.dpi), k:SEL.k, i:SEL.i};
+    $("#apInfo").innerHTML='<b>'+ech(titre(ent(SEL.k,SEL.i)))+'</b> — '+ech(F.lib)+
+      ' · '+APERCU.dpi+' ppp<br>'+ech(chaine(SEL.k,SEL.i).map(x=>bel(x.nom)).join(" › "));
+    $("#apFeuille").innerHTML='<img alt="Aperçu de la carte" src="'+APERCU.image+'">';
+    $("#modaleApercu").hidden=false;
+    etat("Aperçu affiché — imprimez, modifiez ou annulez.");
+  }catch(err){ etat("Aperçu impossible : "+err.message); }
+  b.disabled=false;
+}
+function fermerApercu(){ $("#modaleApercu").hidden=true; }
+function annulerApercu(){ fermerApercu(); APERCU=null;
+  $("#modale").hidden=true; etat("Impression annulée."); }
+function modifierDepuisApercu(){ fermerApercu(); APERCU=null;
+  etat("Reprenez les réglages, puis relancez l’aperçu."); }
+
+async function imprimerCarte(){
+  if(!APERCU){ await apercuImpression(); return; }
+  let cadre=null;
+  try{
+    const F=FORMATS[APERCU.format];
+    const image=APERCU.image;
     cadre=document.createElement("iframe");
     cadre.setAttribute("aria-hidden","true");
     cadre.style.cssText="position:fixed;right:0;bottom:0;width:1px;height:1px;opacity:0;border:0";
@@ -2746,20 +2824,87 @@ async function imprimerCarte(){
     const lancer=()=>{ try{ cadre.contentWindow.focus(); cadre.contentWindow.print(); }catch(e){} };
     const img=doc.images[0];
     if(img&&!img.complete) img.onload=lancer; else setTimeout(lancer,150);
-    journal("impression",{niveau:SEL.k,entite:ent(SEL.k,SEL.i).nom,
-      format:o.format,resolution:dpiUtile(F,o.dpi)});
+    journal("impression",{niveau:APERCU.k,entite:ent(APERCU.k,APERCU.i).nom,
+      format:APERCU.format,resolution:APERCU.dpi});
     etat("Carte envoyée à l’imprimante — "+F.lib+".");
     setTimeout(()=>{ if(cadre) cadre.remove(); },120000);
+    fermerApercu(); APERCU=null;
   }catch(err){
     if(cadre) cadre.remove();
     etat("Impression impossible : "+err.message);
   }
-  b.disabled=false;
 }
 function etat(t){const e=$("#exEtat"); if(e) e.textContent=t;}
 
+/* ==================================================================================
+   CHAÎNE DE CHOIX DE L'EMPRISE
+   On n'oblige plus à retrouver l'entité sur la carte avant d'imprimer : la fenêtre
+   d'édition la fait choisir elle-même, du plus grand ensemble au plus fin. Chaque
+   liste ne propose que ce qui reste atteignable sous les choix précédents, et le
+   niveau le plus fin renseigné devient l'emprise de la planche.
+   ================================================================================== */
+const CHAINE_EX=[{k:"dr",  lib:"Direction Régionale", id:"#exChDr"},
+                 {k:"zone",lib:"Zone ANADER",         id:"#exChZone"},
+                 {k:"dept",lib:"Département",         id:"#exChDept"},
+                 {k:"sp",  lib:"Sous-préfecture",     id:"#exChSp"},
+                 {k:"cadr",lib:"CADR",                id:"#exChCadr"}];
+let CHOIX_EX={dr:"",zone:"",dept:"",sp:"",cadr:""};
+
+/* tout se déduit de la table des CADR, seule à porter le rattachement complet
+   (DR, zone ANADER, département, sous-préfecture) */
+function socleChaine(){
+  return ATLAS.niveaux.cadr.map((a,j)=>({i:j,p:a.p||{}}))
+    .filter(o=>dansPortee("cadr",o.i));
+}
+function chaineDepuisSel(){
+  CHOIX_EX={dr:"",zone:"",dept:"",sp:"",cadr:""};
+  const p=parents(SEL.k,SEL.i)||{};
+  CHAINE_EX.forEach(nv=>{
+    if(SEL.k===nv.k) CHOIX_EX[nv.k]=String(SEL.i);
+    else if(p[nv.k]!==undefined&&p[nv.k]!==null&&p[nv.k]>=0&&CHOIX_EX[nv.k]==="")
+      CHOIX_EX[nv.k]=String(p[nv.k]);
+  });
+  /* rien sous l'emprise courante : on n'invente pas un CADR qui n'a pas été choisi */
+  let apres=false;
+  CHAINE_EX.forEach(nv=>{ if(apres) CHOIX_EX[nv.k]=""; if(nv.k===SEL.k) apres=true; });
+}
+function peuplerChaine(){
+  let reste=socleChaine();
+  CHAINE_EX.forEach(nv=>{
+    const vus=new Map();
+    reste.forEach(o=>{
+      const j=(nv.k==="cadr")?o.i:o.p[nv.k];
+      if(j===undefined||j===null||j<0) return;
+      const e=ent(nv.k,j);
+      if(e&&!vus.has(j)) vus.set(j,bel(e.nom));
+    });
+    const liste=[...vus.entries()].sort((a,b)=>a[1].localeCompare(b[1],"fr"));
+    const sel=$(nv.id);
+    if(!liste.some(e=>String(e[0])===CHOIX_EX[nv.k])) CHOIX_EX[nv.k]="";
+    sel.innerHTML='<option value="">— '+nv.lib+(liste.length?' ('+liste.length+')':'')+' —</option>'+
+      liste.map(e=>'<option value="'+e[0]+'">'+ech(e[1])+'</option>').join("");
+    sel.value=CHOIX_EX[nv.k];
+    sel.disabled=!liste.length;
+    if(CHOIX_EX[nv.k]!=="")
+      reste=reste.filter(o=>String((nv.k==="cadr")?o.i:o.p[nv.k])===CHOIX_EX[nv.k]);
+  });
+}
+function changerChaine(niveau){
+  const nv=CHAINE_EX.find(x=>x.k===niveau);
+  CHOIX_EX[niveau]=$(nv.id).value;
+  /* ce qui est plus fin que le niveau touché n'a plus de sens */
+  let apres=false;
+  CHAINE_EX.forEach(x=>{ if(apres) CHOIX_EX[x.k]=""; if(x.k===niveau) apres=true; });
+  peuplerChaine();
+  let cible=null;
+  CHAINE_EX.forEach(x=>{ if(CHOIX_EX[x.k]!=="") cible={k:x.k,i:+CHOIX_EX[x.k]}; });
+  if(cible&&ent(cible.k,cible.i)){ choisir(cible.k,cible.i); ouvrirExport(true); }
+}
+
 /* ---------- branchements de la fenêtre d’export ---------- */
-function ouvrirExport(){
+function ouvrirExport(garderChaine){
+  if(!garderChaine) chaineDepuisSel();
+  peuplerChaine();
   const en=enfants(SEL.k,SEL.i);
   const lib={pays:"du territoire national",dr:"de la Direction Régionale",zone:"de la zone",
     region:"de la région",dept:"du département",sp:"de la sous-préfecture",
@@ -2784,7 +2929,12 @@ $("#btnFermer").onclick=()=>{$("#modale").hidden=true;};
 $("#modale").addEventListener("click",e=>{if(e.target.id==="modale")$("#modale").hidden=true;});
 document.addEventListener("keydown",e=>{if(e.key==="Escape")$("#modale").hidden=true;});
 $("#btnGenerer").onclick=exporterPng;
-$("#btnImprimer").onclick=imprimerCarte;
+$("#btnImprimer").onclick=apercuImpression;
+CHAINE_EX.forEach(nv=>{ $(nv.id).onchange=()=>changerChaine(nv.k); });
+$("#apImprimer").onclick=imprimerCarte;
+$("#apModifier").onclick=modifierDepuisApercu;
+$("#apAnnuler").onclick=annulerApercu;
+$("#modaleApercu").addEventListener("click",e=>{if(e.target.id==="modaleApercu")modifierDepuisApercu();});
 $("#btnLot").onclick=()=>{$("#modale").hidden=true;ouvrirLot();};
 choisir("pays",0);
 

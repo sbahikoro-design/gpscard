@@ -261,6 +261,16 @@ select,input[type=number],input[type=text]{width:100%;font:inherit;font-size:12.
 #lotNiveaux .chip i{font-style:normal;opacity:.7;margin-left:3px}
 #cpMulti{max-height:22vh;overflow-y:auto;border:1px solid var(--trait);border-radius:4px;
   padding:4px 7px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:0 10px}
+/* une règle d'identifiant l'emporte sur [hidden] : sans cette ligne, la liste
+   des CADR restait ouverte même après changement de niveau */
+#cpMulti[hidden],#cpCadrBloc[hidden],#cpResume[hidden]{display:none}
+#cpCadrBloc{margin-top:9px;border-top:1px solid var(--trait);padding-top:8px}
+#cpFiltres{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:7px 10px}
+#cpFiltres select,#cpFiltres input{width:100%}
+#cpBarreCadr{display:flex;align-items:center;gap:7px;margin:7px 0 5px;flex-wrap:wrap}
+#cpfCompte{font-size:11.5px;color:var(--txt2);margin-right:auto}
+#cpResume{font-size:11.5px;color:var(--txt2);margin-top:5px;line-height:1.4}
+#cpResume b{color:var(--vert)}
 #lotListe{max-height:34vh;overflow-y:auto;border:1px solid var(--trait);border-radius:4px;
   padding:5px 7px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:1px 10px}
 .lotL{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 2px;cursor:pointer;
@@ -537,7 +547,25 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
             <select id="cpNiveau"></select></div>
           <div><label class="champ" for="cpEntite" id="cpEntiteL">Entité attribuée</label>
             <select id="cpEntite"></select>
-            <div id="cpMulti" hidden></div></div>
+            <div id="cpResume" hidden></div></div>
+        </div>
+        <div id="cpCadrBloc" hidden>
+          <div id="cpFiltres">
+            <div><label class="champ" for="cpfZone">Zone ANADER</label>
+              <select id="cpfZone"></select></div>
+            <div><label class="champ" for="cpfDept">Département</label>
+              <select id="cpfDept"></select></div>
+            <div><label class="champ" for="cpfSp">Sous-préfecture</label>
+              <select id="cpfSp"></select></div>
+            <div><label class="champ" for="cpfQ">Recherche</label>
+              <input type="search" id="cpfQ" placeholder="nom du CADR" autocomplete="off"></div>
+          </div>
+          <div id="cpBarreCadr">
+            <span id="cpfCompte"></span>
+            <button type="button" class="btn sec mini" id="cpfTous">Cocher les CADR affichés</button>
+            <button type="button" class="btn sec mini" id="cpfAucun">Tout décocher</button>
+          </div>
+          <div id="cpMulti"></div>
         </div>
         <label class="coche"><input type="checkbox" id="cpDeleguer">
           Autoriser ce compte à créer des comptes sous sa propre portée</label>
@@ -703,7 +731,16 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
 
       <h4>8. Comptes et mise en ligne</h4>
       <p>Hors connexion au service, l’application fonctionne en <b>mode local</b> : accès complet, aucune trace. Une fois l’adresse du service renseignée dans la fenêtre Administration, l’ouverture d’une session devient obligatoire.</p>
-      <p>Les niveaux attribuables suivent la hiérarchie : Direction Générale, Direction Régionale, zone ANADER, CADR. Pour le niveau CADR, la sélection se fait par cases à cocher, un agent pouvant couvrir plusieurs CADR à la fois ; aux autres niveaux, l’entité est unique.</p>
+      <p>Les niveaux attribuables suivent la hiérarchie : Direction Générale, Direction Régionale, zone ANADER, CADR. Aux trois premiers niveaux, l’entité est unique. Au niveau CADR, un agent pouvant en couvrir plusieurs, la sélection se fait par cases à cocher.</p>
+      <p><b>Trouver un CADR parmi 998.</b> Trois listes en cascade — <b>Zone ANADER</b>, puis
+      <b>département</b>, puis <b>sous-préfecture</b> — réduisent la liste de proche en proche :
+      choisir une zone ne laisse que ses départements, choisir un département ne laisse que ses
+      sous-préfectures. Un champ de <b>recherche</b> filtre en plus par le nom. Le compteur
+      rappelle en permanence combien de CADR sont affichés sur le total de votre portée.
+      <b>Cocher les CADR affichés</b> retient d’un coup tout ce que les filtres laissent voir —
+      de quoi attribuer une sous-préfecture entière en deux gestes. Les CADR cochés restent
+      retenus même lorsqu’un changement de filtre les fait disparaître de l’écran : la ligne
+      sous « CADR couverts » rappelle à tout moment ce qui est retenu.</p>
       <p>Chaque compte reçoit une <b>portée</b> — Direction Générale, Direction Régionale, zone ou CADR — et ne voit que cette emprise et ce qu’elle contient : la carte, les listes, la recherche et l’export s’y limitent. Un responsable autorisé à déléguer crée des comptes <b>à l’intérieur de sa propre portée et à un niveau inférieur au sien</b> : un chef de zone crée ses agents CADR, jamais l’inverse.</p>
       <p>À la création, l’application affiche un mot de passe provisoire à transmettre à l’intéressé. À sa première connexion, celui-ci renseigne son adresse électronique et choisit son propre mot de passe.</p>
       <p><b>L’onglet Statistiques</b> compte, sur la période choisie, les connexions, les cartes
@@ -3465,28 +3502,111 @@ function majFormulaireCompte(){
   majEntites();
 }
 function majEntites(){
-  const k=$("#cpNiveau").value, l=entitesDelegables(k);
+  const k=$("#cpNiveau").value;
   const multi=(k==="cadr");          /* un agent peut couvrir plusieurs CADR */
   $("#cpEntiteL").textContent=multi?"CADR couverts — plusieurs choix possibles":"Entité attribuée";
   $("#cpEntite").hidden=multi;
-  $("#cpMulti").hidden=!multi;
-  if(multi){
-    $("#cpMulti").innerHTML=l.length?l.map(o=>
-      '<label class="lotL"><input type="checkbox" value="'+o[0]+'"><span>'+bel(o[1])+'</span></label>').join("")
-      :'<div class="vide">Aucun CADR disponible dans votre portée.</div>';
+  $("#cpCadrBloc").hidden=!multi;
+  $("#cpResume").hidden=!multi;
+  if(multi){ ouvrirChoixCadr(); return; }
+  const l=entitesDelegables(k);
+  $("#cpEntite").innerHTML=l.map(o=>'<option value="'+o[0]+'">'+bel(o[1])+'</option>').join("")
+    ||'<option value="-1">— aucune entité disponible —</option>';
+  $("#cpEntite").disabled=(k==="dg");
+}
+
+/* ==================================================================================
+   CHOIX DES CADR — filtres en cascade
+   Fouiller 998 CADR d'affilée n'a pas de sens : on part de la Zone ANADER, puis du
+   département, puis de la sous-préfecture, chaque liste ne proposant que ce qui
+   reste atteignable. Les CADR cochés sont gardés en mémoire, pas dans la liste
+   affichée : changer de filtre ne perd donc jamais une sélection.
+   ================================================================================== */
+let CADR_CAND=[];                 /* CADR ouverts à la délégation, dans la portée */
+const CADR_SEL=new Set();         /* CADR retenus pour le compte en cours */
+
+function ouvrirChoixCadr(){
+  CADR_CAND=ATLAS.niveaux.cadr
+    .map((a,j)=>({i:j,nom:a.nom,p:a.p||{}}))
+    .filter(o=>dansPortee("cadr",o.i))
+    .sort((a,b)=>bel(a.nom).localeCompare(bel(b.nom),"fr"));
+  optionsFiltreCadr($("#cpfZone"),"zone","Toutes les zones",CADR_CAND);
+  majFiltresCadr();
+}
+/* n'offre que les entités réellement représentées dans le sous-ensemble courant */
+function optionsFiltreCadr(sel,niveau,libTous,base){
+  const vus=new Map();
+  base.forEach(o=>{
+    const j=o.p[niveau];
+    if(j===undefined||j===null||j<0) return;
+    const e=ATLAS.niveaux[niveau]&&ATLAS.niveaux[niveau][j];
+    if(e&&!vus.has(j)) vus.set(j,bel(e.nom));
+  });
+  const liste=[...vus.entries()].sort((a,b)=>a[1].localeCompare(b[1],"fr"));
+  const avant=sel.value;
+  sel.innerHTML='<option value="">'+libTous+' ('+liste.length+')</option>'+
+    liste.map(e=>'<option value="'+e[0]+'">'+ech(e[1])+'</option>').join("");
+  sel.value=liste.some(e=>String(e[0])===avant)?avant:"";
+}
+function majFiltresCadr(origine){
+  if(origine==="zone"){ $("#cpfDept").value=""; $("#cpfSp").value=""; }
+  if(origine==="dept"){ $("#cpfSp").value=""; }
+  const z=$("#cpfZone").value;
+  const baseD=CADR_CAND.filter(o=>!z||String(o.p.zone)===z);
+  optionsFiltreCadr($("#cpfDept"),"dept","Tous les départements",baseD);
+  const d=$("#cpfDept").value;
+  const baseS=baseD.filter(o=>!d||String(o.p.dept)===d);
+  optionsFiltreCadr($("#cpfSp"),"sp","Toutes les sous-préfectures",baseS);
+  listerCadr();
+}
+function cadrFiltres(){
+  const z=$("#cpfZone").value, d=$("#cpfDept").value, s=$("#cpfSp").value;
+  const q=($("#cpfQ").value||"").trim().toLowerCase();
+  return CADR_CAND.filter(o=>
+    (!z||String(o.p.zone)===z)&&(!d||String(o.p.dept)===d)&&(!s||String(o.p.sp)===s)&&
+    (!q||bel(o.nom).toLowerCase().indexOf(q)>=0));
+}
+function listerCadr(){
+  const l=cadrFiltres(), b=$("#cpMulti");
+  if(!CADR_CAND.length){
+    b.innerHTML='<div class="vide">Aucun CADR disponible dans votre portée.</div>';
+  } else if(!l.length){
+    b.innerHTML='<div class="vide">Aucun CADR ne correspond à ces filtres.</div>';
   } else {
-    $("#cpEntite").innerHTML=l.map(o=>'<option value="'+o[0]+'">'+bel(o[1])+'</option>').join("")
-      ||'<option value="-1">— aucune entité disponible —</option>';
-    $("#cpEntite").disabled=(k==="dg");
+    b.innerHTML=l.map(o=>'<label class="lotL"><input type="checkbox" value="'+o.i+'"'+
+      (CADR_SEL.has(o.i)?' checked':'')+'><span>'+ech(bel(o.nom))+'</span></label>').join("");
+    b.querySelectorAll("input").forEach(x=>x.onchange=()=>{
+      if(x.checked) CADR_SEL.add(+x.value); else CADR_SEL.delete(+x.value);
+      majResumeCadr();
+    });
   }
+  $("#cpfCompte").textContent=l.length+" CADR affiché"+(l.length>1?"s":"")+
+    " sur "+CADR_CAND.length+" dans votre portée";
+  majResumeCadr();
+}
+function majResumeCadr(){
+  const r=$("#cpResume"); if(!r) return;
+  const n=CADR_SEL.size;
+  if(!n){ r.innerHTML='Aucun CADR retenu pour l’instant.'; return; }
+  const noms=[...CADR_SEL]
+    .map(i=>bel((ATLAS.niveaux.cadr[i]||{}).nom||""))
+    .sort((a,b)=>a.localeCompare(b,"fr")).slice(0,4).map(ech);
+  r.innerHTML='<b>'+n+'</b> CADR retenu'+(n>1?'s':'')+' : '+noms.join(", ")+
+    (n>4?' et '+(n-4)+' autre'+(n>5?'s':''):'');
+}
+function retenirCadr(ids){
+  CADR_SEL.clear();
+  (ids||[]).forEach(i=>{ if(i>=0) CADR_SEL.add(+i); });
 }
 async function creerCompte(){
   const k=$("#cpNiveau").value, sel=$("#cpEntite");
   let ids=[], libelle="";
   if(k==="cadr"){
-    const coches=[...$("#cpMulti").querySelectorAll("input:checked")];
-    ids=coches.map(c=>+c.value);
-    libelle=coches.map(c=>c.nextElementSibling.textContent).join(", ").slice(0,120);
+    /* la sélection vit en mémoire, pas dans la liste affichée : un CADR coché
+       puis masqué par un filtre reste retenu */
+    ids=[...CADR_SEL].sort((a,b)=>a-b);
+    libelle=ids.map(i=>bel((ATLAS.niveaux.cadr[i]||{}).nom||""))
+      .sort((a,b)=>a.localeCompare(b,"fr")).join(", ").slice(0,120);
     if(!ids.length){$("#cpEtat").textContent="Sélectionnez au moins un CADR.";return;}
   } else {
     ids=[+sel.value];
@@ -3604,8 +3724,8 @@ function modifierDepuisListe(login){
   if([...$("#cpNiveau").options].some(o=>o.value===c.niveau)) $("#cpNiveau").value=c.niveau;
   majEntites();
   if(c.niveau==="cadr"){
-    const ids=c.ids||[];
-    $("#cpMulti").querySelectorAll("input").forEach(x=>{x.checked=ids.indexOf(+x.value)>=0;});
+    retenirCadr(c.ids&&c.ids.length?c.ids:[c.id]);
+    listerCadr();
   } else if([...$("#cpEntite").options].some(o=>o.value===String(c.id))){
     $("#cpEntite").value=String(c.id);
   }
@@ -3620,6 +3740,9 @@ function quitterModif(){
   MODIF=null;
   $("#cpLogin").disabled=false; $("#cpLogin").value=""; $("#cpNom").value="";
   $("#cpDeleguer").checked=false;
+  CADR_SEL.clear();
+  const q=$("#cpfQ"); if(q) q.value="";
+  const z=$("#cpfZone"); if(z) z.value="";
   majFormulaireCompte(); majBoutonCompte();
 }
 function majBoutonCompte(){
@@ -3723,6 +3846,12 @@ async function detailStat(quoi,garder){
   }catch(e){ zone.innerHTML='<div class="vide">'+ech(e.message)+'</div>'; }
 }
 $("#cpNiveau").onchange=majEntites;
+$("#cpfZone").onchange=()=>majFiltresCadr("zone");
+$("#cpfDept").onchange=()=>majFiltresCadr("dept");
+$("#cpfSp").onchange=()=>listerCadr();
+$("#cpfQ").oninput=()=>listerCadr();
+$("#cpfTous").onclick=()=>{ cadrFiltres().forEach(o=>CADR_SEL.add(o.i)); listerCadr(); };
+$("#cpfAucun").onclick=()=>{ CADR_SEL.clear(); listerCadr(); };
 $("#cpCreer").onclick=creerCompte;
 $("#cpAnnuler").onclick=()=>{quitterModif();$("#cpEtat").textContent="";};
 $("#cpPeriode").onchange=statistiques;

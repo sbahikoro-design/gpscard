@@ -99,7 +99,7 @@ class SosActivity : BaseActivity() {
         for (a in Sos.alerts) {
             val card = Ui.card(this).apply { background = Ui.rounded(if (a.cancelled) Ui.CARD else 0xFF5C1010.toInt(), Ui.dp(this@SosActivity, 14).toFloat(), 3, Ui.RED) }
             card.addView(Ui.text(this, (if (a.cancelled) "✅ Annulée — " else "") + a.name, 22f, Ui.TEXT, true))
-            card.addView(Ui.text(this, a.type + (if (a.note.isNotBlank()) "\n« ${a.note} »" else ""), 18f, Ui.GOLD_L, true), Ui.lp(this, top = 4))
+            card.addView(Ui.text(this, a.type + (if (a.note.isNotBlank()) "\n« ${a.note} »" else ""), 18f, Ui.GOLD, true), Ui.lp(this, top = 4))
             card.addView(Ui.text(this, "Envoyée à " + SimpleDateFormat("HH:mm", Locale.FRANCE).format(Date(a.time)), 13f, Ui.MUTED), Ui.lp(this, top = 4))
             val hasPos = !a.lat.isNaN()
             if (hasPos && here != null) {

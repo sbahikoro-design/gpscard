@@ -25,19 +25,24 @@ jobs:
 
       - name: Compilation
         run: |
-          gradle assembleRelease --no-daemon
-          cp app/build/outputs/apk/release/app-release.apk BS_CALLMagic.apk
+          gradle assembleStandardRelease assemblePontRelease --no-daemon
+          cp app/build/outputs/apk/standard/release/app-standard-release.apk BS_CALLMagic.apk
+          cp app/build/outputs/apk/pont/release/app-pont-release.apk BS_CALLMagic_PontSMS.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: BS_CALLMagic-apk
-          path: BS_CALLMagic.apk
+          path: |
+            BS_CALLMagic.apk
+            BS_CALLMagic_PontSMS.apk
 
       - name: Publication (lien de téléchargement direct)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: bs-callmagic-v4.0
-          name: BS CALLMagic v4.0
+          tag_name: bs-callmagic-v4.1
+          name: BS CALLMagic v4.1
           target_commitish: bs-callmagic
-          files: BS_CALLMagic.apk
-          body: v4 — facteur invisible (messages qui voyagent de téléphone en téléphone), pont SMS, partage d'Internet, SOS tam-tam, messages posés, mode sans lecture, chaîne humaine. Plus tout le reste — Wi-Fi, Bluetooth, Internet, appels audio et vidéo, interphone, bulle.
+          files: |
+            BS_CALLMagic.apk
+            BS_CALLMagic_PontSMS.apk
+          body: v4.1 — BS_CALLMagic.apk = édition normale (sans autorisation SMS, acceptée par Play Protect) pour tout le monde. BS_CALLMagic_PontSMS.apk = seulement pour les téléphones qui servent de pont SMS. Signature fixe BSINALY.

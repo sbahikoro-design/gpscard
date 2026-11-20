@@ -11,15 +11,43 @@ android {
         applicationId = "ci.bsinaly.callmagic"
         minSdk = 21
         targetSdk = 34
-        versionCode = 4
-        versionName = "4.0"
+        versionCode = 41
+        versionName = "4.1"
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    // Clé de signature fixe (BSINALY) : mêmes signatures d'une version à l'autre → mises à jour sans désinstaller
+    signingConfigs {
+        create("bsinaly") {
+            storeFile = file("../keystore/bscallmagic.jks")
+            storePassword = "BsCallMagic-Odienne-2026"
+            keyAlias = "bscallmagic"
+            keyPassword = "BsCallMagic-Odienne-2026"
+        }
+    }
+
+    // Deux éditions : « standard » sans aucune autorisation SMS (acceptée par Play Protect),
+    // « pont » avec le pont SMS (seulement pour les téléphones qui servent de pont)
+    flavorDimensions += "edition"
+    productFlavors {
+        create("standard") {
+            dimension = "edition"
+            buildConfigField("boolean", "SMS", "false")
+        }
+        create("pont") {
+            dimension = "edition"
+            versionNameSuffix = "-pont"
+            buildConfigField("boolean", "SMS", "true")
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signée avec la clé debug pour pouvoir l'installer directement
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("bsinaly")
         }
     }
 

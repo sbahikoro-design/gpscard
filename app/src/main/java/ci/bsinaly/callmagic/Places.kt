@@ -111,7 +111,9 @@ object Sos {
             val env = Courier.create(Envelope.SOS, "*", "", payload, 2)
             myActive = env.id
             val text = smsText(Hub.myName(), type, note, loc?.latitude, loc?.longitude)
-            val sent = sendSms(c, numbers, text)
+            var sent = sendSms(c, numbers, text)
+            // Édition standard : on ouvre l'application SMS du téléphone avec le message déjà écrit
+            if (sent == 0 && numbers.isNotBlank()) sent = openSmsComposer(c, numbers, text)
             Hub.addSystem("🆘 Alerte envoyée à tout le réseau" + (if (sent > 0) " et par SMS à $sent numéro(s)" else "") +
                 (if (loc == null) " (position inconnue)" else ""))
             done(true)
@@ -133,7 +135,7 @@ object Sos {
     }
 
     fun sendSms(c: Context, numbers: String, text: String): Int {
-        if (Build.VERSION.SDK_INT >= 23 && c.checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) return 0
+        if (!SmsBridge.canSend(c)) return 0
         var n = 0
         for (num in numbers.split(',', ';', ' ', '\n').map { it.trim() }.filter { it.length >= 8 }.take(5)) {
             try {
@@ -142,6 +144,17 @@ object Sos {
             } catch (_: Exception) {}
         }
         return n
+    }
+
+    /** Ouvre l'application SMS avec les numéros et le texte (il reste à toucher « Envoyer »). */
+    fun openSmsComposer(c: Context, numbers: String, text: String): Int {
+        val list = numbers.split(',', ';', ' ', '\n').map { it.trim() }.filter { it.length >= 8 }.take(5)
+        if (list.isEmpty()) return 0
+        return try {
+            val i = Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:" + list.joinToString(";")))
+                .putExtra("sms_body", text).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            c.startActivity(i); list.size
+        } catch (_: Exception) { 0 }
     }
 
     fun onAlert(env: Envelope) {
@@ -293,8 +306,9 @@ object Geo {
 // ====================================================================== pont SMS
 
 object SmsBridge {
-    fun canSend(c: Context) = Build.VERSION.SDK_INT < 23 ||
-        c.checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
+    /** Seule l'édition « Pont SMS » peut envoyer des SMS elle-même. */
+    fun canSend(c: Context) = BuildConfig.SMS && (Build.VERSION.SDK_INT < 23 ||
+        c.checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED)
 
     fun active(c: Context) = Prefs.smsBridge(c) && canSend(c)
 

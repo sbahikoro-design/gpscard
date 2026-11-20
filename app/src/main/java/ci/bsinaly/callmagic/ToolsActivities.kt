@@ -128,7 +128,15 @@ class SmsActivity : BaseActivity() {
 
     private fun toggleBridge() {
         if (SmsBridge.active(this)) { Prefs.setSmsBridge(this, false); render(); return }
-        needPerms(listOf(Manifest.permission.SEND_SMS, Manifest.permission.RECEIVE_SMS)) {
+        if (!BuildConfig.SMS) {
+            AlertDialog.Builder(this).setTitle("Édition « Pont SMS » nécessaire")
+                .setMessage("Pour que Google Play Protect accepte l'application, l'édition normale ne demande aucune autorisation SMS. " +
+                    "Elle peut quand même envoyer des SMS PAR un pont.\n\nPour que CE téléphone devienne un pont, installez l'édition " +
+                    "« BS_CALLMagic_PontSMS.apk » (même application, vos messages sont gardés).")
+                .setPositiveButton("OK", null).show()
+            return
+        }
+        needPerms(listOf("android.permission.SEND_SMS", "android.permission.RECEIVE_SMS")) {
             Prefs.setSmsBridge(this, true); render()
             Ui.toast(this, "Pont activé : les autres le verront dans quelques secondes.")
         }

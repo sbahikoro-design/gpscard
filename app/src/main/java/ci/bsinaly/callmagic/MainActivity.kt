@@ -160,7 +160,7 @@ class MainActivity : BaseActivity() {
             HubService.stop(this); Ui.toast(this, "BS CALLMagic est arrêté. Relancez l'application pour le réactiver.")
             finishAffinity()
         }, Ui.lp(this, top = 18))
-        root.addView(Ui.center(Ui.text(this, "BSINALY · 0779687995 · v4.0", 12f, Ui.MUTED)), Ui.lp(this, top = 20))
+        root.addView(Ui.center(Ui.text(this, "BSINALY · 0779687995 · v" + BuildConfig.VERSION_NAME, 12f, Ui.MUTED)), Ui.lp(this, top = 20))
 
         askPermissions()
     }
@@ -271,7 +271,7 @@ class MainActivity : BaseActivity() {
                             Ui.toast(this, "Envoi de l'alerte avec votre position…")
                             Sos.send(this, Sos.TYPES[i], note.text.toString().trim()) { render() }
                         }
-                        if (Prefs.sosNumbers(this).isNotBlank()) needPerms(listOf(Manifest.permission.SEND_SMS, Manifest.permission.ACCESS_FINE_LOCATION)) { go() }
+                        if (Prefs.sosNumbers(this).isNotBlank() && BuildConfig.SMS) needPerms(listOf("android.permission.SEND_SMS", Manifest.permission.ACCESS_FINE_LOCATION)) { go() }
                         else needPerms(listOf(Manifest.permission.ACCESS_FINE_LOCATION)) { go() }
                     }.setNegativeButton("Annuler", null).show()
             }.setNegativeButton("Annuler", null).show()
@@ -290,10 +290,11 @@ class MainActivity : BaseActivity() {
             inputType = InputType.TYPE_CLASS_PHONE
         }
         android.app.AlertDialog.Builder(this).setTitle("Numéros prévenus par SMS")
-            .setMessage("En cas d'alerte, ces numéros reçoivent un SMS avec votre position (si votre téléphone ou un pont SMS a du réseau). 5 au maximum, séparés par des virgules.")
+            .setMessage("En cas d'alerte, ces numéros reçoivent un SMS avec votre position (si votre téléphone ou un pont SMS a du réseau). 5 au maximum, séparés par des virgules." +
+                if (BuildConfig.SMS) "" else "\n\nÉdition normale : au moment de l'alerte, votre application SMS s'ouvre avec le message déjà écrit — il suffit de toucher Envoyer.")
             .setView(e).setPositiveButton("Enregistrer") { _, _ ->
                 Prefs.setSosNumbers(this, e.text.toString())
-                if (e.text.isNotBlank()) needPerms(listOf(Manifest.permission.SEND_SMS)) {}
+                if (e.text.isNotBlank() && BuildConfig.SMS) needPerms(listOf("android.permission.SEND_SMS")) {}
             }.setNegativeButton("Annuler", null).show()
     }
 }

@@ -276,13 +276,13 @@ object Hub {
             Routing.prune()
             val ready = readyPeers()
             // Chaîne humaine : annonce régulière de qui je peux joindre
-            if (ready.isNotEmpty()) { val adv = Routing.advert(); for (p in ready) io.execute { p.send(Proto.ROUTES, adv) } }
+            for (p in ready) if (p.version >= 4) { val adv = Routing.advert(p); io.execute { p.send(Proto.ROUTES, adv) } }
             if (tick % 3 == 0) {
                 val hello = helloPayload()
-                for (p in peers) if (p.alive) io.execute { p.send(Proto.HELLO, hello) }
+                for (p in peers) if (p.alive && p.version >= 4) io.execute { p.send(Proto.HELLO, hello) }
             }
             // Facteur : comparer régulièrement les sacs
-            if (tick % 8 == 0 && ready.isNotEmpty()) { val sm = Courier.summary(); for (p in ready) io.execute { p.send(Proto.BAG_SUMMARY, sm) } }
+            if (tick % 8 == 0 && ready.isNotEmpty()) { val sm = Courier.summary(); for (p in ready) if (p.version >= 4) io.execute { p.send(Proto.BAG_SUMMARY, sm) } }
             val cp = callPeer
             if (cp is Routing.VirtualPeer && Routing.route(cp.deviceId) == null && call != Call.IDLE)
                 finishCall("📵 Chaîne humaine coupée", cp.deviceId)
@@ -597,7 +597,7 @@ object Hub {
                 val d = DataInputStream(ByteArrayInputStream(b))
                 val id = d.getStr(); val name = d.getStr().ifBlank { "Correspondant" }
                 if (id == myId) { io.execute { p.close("soi-même", true) }; return }
-                if (d.available() >= 4) d.readInt()                        // version
+                if (d.available() >= 4) p.version = d.readInt()
                 if (d.available() >= 4) p.caps = d.readInt()
                 if (d.available() >= 4) p.pubKey = d.getBytes(1000).takeIf { it.isNotEmpty() }
                 if (p.deviceId == id) {                                      // présentation répétée : mise à jour
@@ -622,8 +622,10 @@ object Hub {
                 Contacts.upsertFromPeer(p)
                 if (!already) addSystem("🔗 $name connecté (${Proto.icon(p.transport)} ${p.transport})")
                 // Premier contact : échange des sacs du facteur et des routes de la chaîne
-                val sm = Courier.summary(); val adv = Routing.advert()
-                io.execute { p.send(Proto.BAG_SUMMARY, sm); p.send(Proto.ROUTES, adv) }
+                if (p.version >= 4) {
+                    val sm = Courier.summary(); val adv = Routing.advert(p)
+                    io.execute { p.send(Proto.BAG_SUMMARY, sm); p.send(Proto.ROUTES, adv) }
+                }
                 changed()
                 main.post { events?.onPeersChanged() }
             }

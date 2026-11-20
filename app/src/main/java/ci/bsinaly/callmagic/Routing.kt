@@ -30,12 +30,12 @@ object Routing {
     private object NullOut : OutputStream() { override fun write(b: Int) {} }
 
     /** Liste « qui je peux joindre » envoyée régulièrement aux voisins directs. */
-    fun advert(): ByteArray {
+    fun advert(to: Peer? = null): ByteArray {
         val direct = Hub.readyPeers().filter { it.transport != Proto.CHAIN }.distinctBy { it.deviceId }
         val entries = ArrayList<Triple<String, String, Int>>()
-        for (p in direct) entries.add(Triple(p.deviceId, p.name, 1))
+        for (p in direct) if (p !== to && p.deviceId != to?.deviceId) entries.add(Triple(p.deviceId, p.name, 1))
         val now = System.currentTimeMillis()
-        for ((id, r) in table) if (now - r.at < 30_000 && r.hops < MAX_HOPS && direct.none { it.deviceId == id })
+        for ((id, r) in table) if (now - r.at < 30_000 && r.hops < MAX_HOPS && r.next !== to && id != to?.deviceId && direct.none { it.deviceId == id })
             entries.add(Triple(id, r.name, r.hops + 1))
         return pack { writeInt(entries.size); for ((id, n, h) in entries) { putStr(id); putStr(n); writeByte(h) } }
     }

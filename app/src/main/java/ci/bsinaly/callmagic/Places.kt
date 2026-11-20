@@ -321,7 +321,7 @@ object SmsBridge {
     fun request(c: Context, bridge: Contact, number: String, text: String): Boolean {
         val pub = bridge.pubKey() ?: return false
         val id = Courier.newId()
-        val inner = pack { putStr(number); putStr(text); putStr(Hub.myName()) }
+        val inner = pack { putStr(number); putStr(text); putStr(Hub.myName()); putBytes(Identity.publicKey) }
         Courier.create(Envelope.SMS_REQ, bridge.id, bridge.code, Identity.seal(pub, inner, java.nio.ByteBuffer.allocate(8).putLong(id).array()), 3, id)
         Prefs.setLastBridge(c, bridge.id)
         Hub.addSmsOutgoing(id, number, text, bridge.name)
@@ -333,6 +333,7 @@ object SmsBridge {
         val c = Hub.app
         val d = DataInputStream(ByteArrayInputStream(plain))
         val number = d.getStr(); val text = d.getStr(); val who = d.getStr()
+        val pub = if (d.available() > 4) d.getBytes(1000) else Contacts.byId(env.origin)?.pubKey()
         val status = when {
             !active(c) -> "refusé : le pont est désactivé"
             remainingToday(c) <= 0 -> "refusé : quota du jour atteint"
@@ -340,20 +341,21 @@ object SmsBridge {
                 @Suppress("DEPRECATION") val sm = if (Build.VERSION.SDK_INT >= 31) c.getSystemService(SmsManager::class.java) else SmsManager.getDefault()
                 sm.sendMultipartTextMessage(number, null, sm.divideMessage("[$who via BS CALLMagic] $text"), null, null)
                 use(c)
-                rememberReply(c, number, env.origin, env.originCode, who)
+                rememberReply(c, number, env.origin, env.originCode, who, pub)
                 "envoyé"
             } catch (e: Exception) { "échec : ${e.message}" }
         }
-        reply(env.origin, number, if (status == "envoyé") "" else status, kind = 0, ref = env.id)
+        reply(env.origin, env.originCode, pub, number, if (status == "envoyé") "" else status, kind = 0, ref = env.id)
         Hub.main.post {
             HubService.instance?.notifySimple("🌉 Pont SMS", "SMS pour $who vers $number : $status (reste ${remainingToday(c)} aujourd'hui)")
         }
     }
 
-    private fun rememberReply(c: Context, number: String, id: String, code: String, name: String) {
+    private fun rememberReply(c: Context, number: String, id: String, code: String, name: String, pub: ByteArray?) {
         val sp = Prefs.raw(c)
         val o = try { JSONObject(sp.getString("sms_map", "{}")) } catch (_: Exception) { JSONObject() }
-        o.put(digits(number), JSONObject().put("id", id).put("code", code).put("name", name).put("t", System.currentTimeMillis()))
+        o.put(digits(number), JSONObject().put("id", id).put("code", code).put("name", name).put("t", System.currentTimeMillis())
+            .put("pub", if (pub != null) android.util.Base64.encodeToString(pub, android.util.Base64.NO_WRAP) else ""))
         sp.edit().putString("sms_map", o.toString()).apply()
     }
 
@@ -364,16 +366,17 @@ object SmsBridge {
         val m = o.optJSONObject(digits(number)) ?: return
         if (System.currentTimeMillis() - m.optLong("t") > 72 * 3600_000L) return
         Hub.init(c); Identity.init(c); Courier.init(c)
-        reply(m.getString("id"), number, body, kind = 1, ref = 0L, code = m.optString("code"))
+        val pub = m.optString("pub").takeIf { it.isNotEmpty() }?.let { android.util.Base64.decode(it, android.util.Base64.NO_WRAP) }
+        reply(m.getString("id"), m.optString("code"), pub, number, body, kind = 1, ref = 0L)
         HubService.instance?.notifySimple("🌉 Pont SMS", "Réponse de $number transmise à ${m.optString("name")}")
     }
 
-    private fun reply(toId: String, number: String, text: String, kind: Int, ref: Long, code: String? = null) {
+    private fun reply(toId: String, code: String, pubIn: ByteArray?, number: String, text: String, kind: Int, ref: Long) {
         val ct = Contacts.byId(toId)
-        val pub = ct?.pubKey() ?: return
+        val pub = pubIn ?: ct?.pubKey() ?: return
         val id = Courier.newId()
         val inner = pack { writeByte(kind); writeLong(ref); putStr(number); putStr(text); putStr(Hub.myName()) }
-        Courier.create(Envelope.SMS_RES, toId, code ?: ct.code, Identity.seal(pub, inner, java.nio.ByteBuffer.allocate(8).putLong(id).array()), 3, id)
+        Courier.create(Envelope.SMS_RES, toId, code.ifEmpty { ct?.code ?: "" }, Identity.seal(pub, inner, java.nio.ByteBuffer.allocate(8).putLong(id).array()), 3, id)
     }
 
     /** Côté demandeur : résultat d'envoi ou réponse SMS. */

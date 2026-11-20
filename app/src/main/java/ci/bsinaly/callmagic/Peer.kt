@@ -19,6 +19,7 @@ open class Peer(
 ) {
     @Volatile var deviceId = ""
     @Volatile var caps = 0
+    @Volatile var version = 0
     @Volatile var pubKey: ByteArray? = null
     /** Enveloppes que ce correspondant possède déjà (facteur). */
     val knownEnvelopes: MutableSet<Long> = java.util.Collections.synchronizedSet(HashSet())

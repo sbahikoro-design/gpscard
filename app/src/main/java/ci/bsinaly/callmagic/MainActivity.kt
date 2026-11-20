@@ -31,6 +31,7 @@ class MainActivity : BaseActivity() {
     private lateinit var bBubble: Button
     private lateinit var bAuto: Button
     private lateinit var bBattery: Button
+    private lateinit var sosBtn: Button
     private val handler = Handler(Looper.getMainLooper())
     private val observer: () -> Unit = { render() }
     private val ticker = object : Runnable {
@@ -43,10 +44,28 @@ class MainActivity : BaseActivity() {
         StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().build())
         Hub.init(this)
         HubService.start(this)
+        if (Prefs.simpleMode(this)) { startActivity(Intent(this, SimpleActivity::class.java)); finish(); return }
 
         val root = Ui.screen(this)
         root.addView(Ui.title(this, "BS CALLMagic"))
         root.addView(Ui.text(this, "Messages, vocaux, fichiers, appels audio et vidéo — Wi-Fi, Bluetooth ou Internet.", 13f, Ui.MUTED))
+
+        // SOS : maintenir 2 secondes
+        sosBtn = Ui.button(this, "", Ui.RED) {}
+        sosBtn.textSize = 17f
+        var armed: Runnable? = null
+        sosBtn.setOnTouchListener { _, e ->
+            when (e.action) {
+                android.view.MotionEvent.ACTION_DOWN -> { armed = Runnable { askSos() }.also { handler.postDelayed(it, 1800) }; true }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    armed?.let { handler.removeCallbacks(it) }
+                    if (Sos.myActive != 0L && e.action == android.view.MotionEvent.ACTION_UP) confirmCancelSos()
+                    true
+                }
+                else -> true
+            }
+        }
+        root.addView(sosBtn, Ui.lp(this, top = 12))
 
         // Mes coordonnées
         val me = Ui.card(this)
@@ -64,6 +83,20 @@ class MainActivity : BaseActivity() {
         row.addView(Ui.button(this, "🌐 Internet", Ui.BLUE) { startActivity(Intent(this, InternetActivity::class.java)) },
             LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { leftMargin = Ui.dp(this@MainActivity, 4) })
         root.addView(row, Ui.lp(this, top = 12))
+
+        // Outils
+        val tools = listOf(
+            "📮 Facteur" to PostActivity::class.java, "🌉 Pont SMS" to SmsActivity::class.java,
+            "📍 Messages posés" to GeoActivity::class.java, "🆘 Alertes reçues" to SosActivity::class.java)
+        for (k in tools.indices step 2) {
+            val r = Ui.horizontal(this)
+            for (j in 0..1) {
+                val (label, cls) = tools[k + j]
+                r.addView(Ui.button(this, label, Ui.CARD) { startActivity(Intent(this, cls)) },
+                    LinearLayout.LayoutParams(0, Ui.WRAP, 1f).apply { if (j == 0) rightMargin = Ui.dp(this@MainActivity, 4) else leftMargin = Ui.dp(this@MainActivity, 4) })
+            }
+            root.addView(r, Ui.lp(this, top = 8))
+        }
 
         // Annuaire
         root.addView(Ui.text(this, "Personnes", 20f, Ui.GOLD, true), Ui.lp(this, top = 20))
@@ -112,13 +145,22 @@ class MainActivity : BaseActivity() {
         bAuto = Ui.button(this, "", Ui.GREY) { Prefs.setAutoJoin(this, !Prefs.autoJoin(this)); render() }
         root.addView(bAuto, Ui.lp(this, top = 10))
         root.addView(Ui.text(this, "Sur un même Wi-Fi, les téléphones BS CALLMagic se connectent automatiquement.", 12f, Ui.MUTED), Ui.lp(this, top = 2))
+        root.addView(Ui.button(this, "🆘 Numéros prévenus par SMS en cas d'alerte…", Ui.GREY) { sosNumbers() }, Ui.lp(this, top = 10))
+        root.addView(Ui.button(this, "🗣 Passer en mode sans lecture", Ui.GREY) {
+            android.app.AlertDialog.Builder(this).setTitle("Mode sans lecture")
+                .setMessage("L'écran n'affichera plus que des visages et de grands boutons, et tout sera dit à voix haute. " +
+                    "Pour revenir au mode normal : gardez le doigt 3 secondes sur ⚙ en bas de l'écran.\n\n" +
+                    "Astuce : choisissez d'abord une photo pour chaque contact (touchez une personne › Choisir sa photo).")
+                .setPositiveButton("Activer") { _, _ -> Prefs.setSimpleMode(this, true); startActivity(Intent(this, SimpleActivity::class.java)); finish() }
+                .setNegativeButton("Annuler", null).show()
+        }, Ui.lp(this, top = 10))
         bBattery = Ui.button(this, "🔋 Empêcher la mise en veille de l'application", Ui.GREY) { askBattery() }
         root.addView(bBattery, Ui.lp(this, top = 10))
         root.addView(Ui.button(this, "⏻  Arrêter BS CALLMagic", Ui.RED) {
             HubService.stop(this); Ui.toast(this, "BS CALLMagic est arrêté. Relancez l'application pour le réactiver.")
             finishAffinity()
         }, Ui.lp(this, top = 18))
-        root.addView(Ui.center(Ui.text(this, "BSINALY · 0779687995 · v3.0", 12f, Ui.MUTED)), Ui.lp(this, top = 20))
+        root.addView(Ui.center(Ui.text(this, "BSINALY · 0779687995 · v4.0", 12f, Ui.MUTED)), Ui.lp(this, top = 20))
 
         askPermissions()
     }
@@ -137,13 +179,19 @@ class MainActivity : BaseActivity() {
     }
 
     private fun render() {
+        sosBtn.text = if (Sos.myActive != 0L) "🆘 ALERTE EN COURS — toucher pour annuler (fausse alerte)" else "🆘 SOS — gardez le doigt 2 secondes"
+        val carried = Courier.carriedForOthers()
+        val active = Sos.alerts.count { !it.cancelled && System.currentTimeMillis() - it.time < 6 * 3600_000 }
         codeText.text = Contacts.pretty(Hub.myCode())
         val ps = Hub.readyPeers()
         val wifi = Hub.localIps()
         netText.text = (if (HubService.instance != null) "🟢 Actif en arrière-plan\n" else "⏳ Démarrage…\n") +
             (if (wifi.isNotEmpty()) "📶 Réseau local : ${wifi.joinToString(", ")}" else "📶 Pas de réseau Wi-Fi") + "\n" +
             "🔵 Bluetooth : " + (if (Hub.btReady()) "actif" else "désactivé ou non autorisé") + "\n" +
-            Relay.statusText()
+            Relay.statusText() +
+            (if (carried > 0) "\n📮 Vous transportez $carried lettre(s) scellée(s) pour d'autres" else "") +
+            (if (Routing.reachable().isNotEmpty()) "\n🔗 ${Routing.reachable().size} personne(s) joignable(s) par la chaîne humaine" else "") +
+            (if (active > 0) "\n🆘 $active alerte(s) active(s) autour de vous" else "")
         val unreadSalon = Hub.unreadBy[""] ?: 0
         salon.text = "💬 Salon" + (if (ps.isNotEmpty()) " (${ps.size})" else "") + (if (unreadSalon > 0) " · $unreadSalon 🔴" else "")
 
@@ -200,7 +248,7 @@ class MainActivity : BaseActivity() {
 
     private fun askPermissions() {
         if (Build.VERSION.SDK_INT < 23) return
-        val wanted = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
+        val wanted = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION)
         if (Build.VERSION.SDK_INT >= 33) wanted.add(Manifest.permission.POST_NOTIFICATIONS)
         if (Build.VERSION.SDK_INT <= 28) wanted.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         val missing = wanted.filter { checkSelfPermission(it) != android.content.pm.PackageManager.PERMISSION_GRANTED }
@@ -210,5 +258,42 @@ class MainActivity : BaseActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         if (requestCode == 1) { HubService.start(this, HubService.ACTION_REFRESH); return }
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
+    private fun askSos() {
+        try { (getSystemService(VIBRATOR_SERVICE) as? android.os.Vibrator)?.vibrate(300) } catch (_: Exception) {}
+        android.app.AlertDialog.Builder(this).setTitle("🆘 Quelle urgence ?")
+            .setItems(Sos.TYPES.toTypedArray()) { _, i ->
+                val note = EditText(this).apply { hint = "Précision (facultatif) : lieu, ce qu'il faut…" }
+                android.app.AlertDialog.Builder(this).setTitle(Sos.TYPES[i]).setView(note)
+                    .setPositiveButton("ENVOYER L'ALERTE") { _, _ ->
+                        val go = {
+                            Ui.toast(this, "Envoi de l'alerte avec votre position…")
+                            Sos.send(this, Sos.TYPES[i], note.text.toString().trim()) { render() }
+                        }
+                        if (Prefs.sosNumbers(this).isNotBlank()) needPerms(listOf(Manifest.permission.SEND_SMS, Manifest.permission.ACCESS_FINE_LOCATION)) { go() }
+                        else needPerms(listOf(Manifest.permission.ACCESS_FINE_LOCATION)) { go() }
+                    }.setNegativeButton("Annuler", null).show()
+            }.setNegativeButton("Annuler", null).show()
+    }
+
+    private fun confirmCancelSos() {
+        android.app.AlertDialog.Builder(this).setTitle("Annuler l'alerte ?")
+            .setMessage("Tout le monde sera prévenu que c'était une fausse alerte ou que tout va bien.")
+            .setPositiveButton("Oui, annuler") { _, _ -> Sos.cancel(this); render() }
+            .setNegativeButton("Non", null).show()
+    }
+
+    private fun sosNumbers() {
+        val e = EditText(this).apply {
+            setText(Prefs.sosNumbers(this@MainActivity)); hint = "ex. 0707070707, 0505050505"
+            inputType = InputType.TYPE_CLASS_PHONE
+        }
+        android.app.AlertDialog.Builder(this).setTitle("Numéros prévenus par SMS")
+            .setMessage("En cas d'alerte, ces numéros reçoivent un SMS avec votre position (si votre téléphone ou un pont SMS a du réseau). 5 au maximum, séparés par des virgules.")
+            .setView(e).setPositiveButton("Enregistrer") { _, _ ->
+                Prefs.setSosNumbers(this, e.text.toString())
+                if (e.text.isNotBlank()) needPerms(listOf(Manifest.permission.SEND_SMS)) {}
+            }.setNegativeButton("Annuler", null).show()
     }
 }

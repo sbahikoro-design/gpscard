@@ -16,8 +16,12 @@ class Contact(
     var bt: String = "",     // adresse Bluetooth
     var lastSeen: Long = 0,
     var lastVia: String = "",
-    var saved: Boolean = true
+    var saved: Boolean = true,
+    var pub: String = "",    // clé publique (base64) : permet le courrier chiffré du facteur
+    var caps: Int = 0,       // pont SMS, partage d'Internet…
+    var photo: String = ""   // visage choisi pour le mode sans lecture
 ) {
+    fun pubKey(): ByteArray? = if (pub.isEmpty()) null else try { android.util.Base64.decode(pub, android.util.Base64.NO_WRAP) } catch (_: Exception) { null }
     /** Clé de conversation privée. */
     val key: String get() = id.ifEmpty { "code:$code" }
 }
@@ -47,19 +51,21 @@ object Contacts {
                 val o = arr.getJSONObject(i)
                 list.add(Contact(
                     o.optString("id"), o.optString("name"), o.optString("code"), o.optString("ip"),
-                    o.optInt("port", Hub.PORT), o.optString("lan"), o.optString("bt"), o.optLong("seen"), o.optString("via")
+                    o.optInt("port", Hub.PORT), o.optString("lan"), o.optString("bt"), o.optLong("seen"), o.optString("via"),
+                    true, o.optString("pub"), o.optInt("caps"), o.optString("photo")
                 ))
             }
         } catch (_: Exception) {}
     }
 
-    private fun save() {
+    fun save() {
         val c = app ?: return
         val arr = JSONArray()
         synchronized(list) {
             for (k in list) arr.put(JSONObject().apply {
                 put("id", k.id); put("name", k.name); put("code", k.code); put("ip", k.ip); put("port", k.port)
                 put("lan", k.lanIp); put("bt", k.bt); put("seen", k.lastSeen); put("via", k.lastVia)
+                put("pub", k.pub); put("caps", k.caps); put("photo", k.photo)
             })
         }
         c.getSharedPreferences("bscm", Context.MODE_PRIVATE).edit().putString("contacts", arr.toString()).apply()
@@ -82,6 +88,8 @@ object Contacts {
             if (c == null) { c = Contact(p.deviceId, p.name, code); list.add(c); isNew = true }
             c.id = p.deviceId; c.code = code; c.name = p.name
             c.lastSeen = System.currentTimeMillis(); c.lastVia = p.transport
+            c.caps = p.caps
+            p.pubKey?.let { c.pub = android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }
             when (p.transport) {
                 Proto.WIFI -> c.lanIp = p.address
                 Proto.NET_IP -> if (p.outgoing) c.ip = p.address
@@ -198,12 +206,18 @@ object Contacts {
             out.add(Access(Proto.NET_CODE, Access.AVAILABLE, "🔒🌐 Internet — en ligne (code ${pretty(c.code)})"))
         if (Proto.NET_IP !in connectedVia && c.ip.isNotEmpty())
             out.add(Access(Proto.NET_IP, Access.MAYBE, "🌐 Internet direct — IP ${c.ip}"))
+        if (c.id.isNotEmpty() && connectedVia.isEmpty()) Routing.route(c.id)?.let { r ->
+            out.add(Access(Proto.CHAIN, Access.AVAILABLE,
+                "🔗 Chaîne humaine — via ${r.next.name}" + (if (r.hops > 2) " (${r.hops - 1} relais)" else "")))
+        }
         if (Proto.BT !in connectedVia && c.bt.isNotEmpty() && Hub.btReady())
             out.add(Access(Proto.BT, Access.MAYBE, "🔵 Bluetooth — si à portée"))
         if (Proto.WIFI !in connectedVia && out.none { it.via == Proto.WIFI } && c.lanIp.isNotEmpty() && Hub.localIps().isNotEmpty())
             out.add(Access(Proto.WIFI, Access.MAYBE, "📶 Wi-Fi — dernière adresse ${c.lanIp}"))
         if (Proto.NET_CODE !in connectedVia && out.none { it.via == Proto.NET_CODE } && c.code.isNotEmpty() && Relay.online)
             out.add(Access(Proto.NET_CODE, Access.MAYBE, "🔒🌐 Internet (code) — semble hors ligne"))
+        if (out.none { it.state <= Access.AVAILABLE } && c.pub.isNotEmpty())
+            out.add(Access(Proto.POST, Access.MAYBE, "📮 Facteur — le message voyagera de téléphone en téléphone"))
         return out
     }
 
@@ -216,6 +230,8 @@ object Contacts {
             out.add(Contact(f.id, f.name, codeOf(f.id), saved = false))
         for (p in Hub.readyPeers()) if (out.none { it.id == p.deviceId })
             out.add(Contact(p.deviceId, p.name, codeOf(p.deviceId), saved = false))
+        for ((id, name, _) in Routing.reachable()) if (out.none { it.id == id })
+            out.add(Contact(id, name, codeOf(id), saved = false))
         return out.sortedWith(compareBy<Contact> { bestState(it) }.thenBy { it.name.lowercase() })
     }
 

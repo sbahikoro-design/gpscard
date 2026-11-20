@@ -10,7 +10,7 @@ import java.net.InetAddress
 
 /** Types de trames : [type: 1 octet][longueur: 4 octets][données]. Protocole v3. */
 object Proto {
-    const val VERSION = 3
+    const val VERSION = 4
 
     const val HELLO = 1        // str id, str nom, int version
     const val TEXT = 2         // long clé, str idOrigine, str nomOrigine, str dest, str texte
@@ -26,11 +26,20 @@ object Proto {
     const val VOICE = 12       // long clé, str idOrigine, str nomOrigine, str dest, int durée ms, int n, octets (m4a)
     const val VIDEO = 13       // 2 octets rotation + JPEG
     const val PING = 14        // maintien de la liaison
+    const val BAG_SUMMARY = 15 // facteur : enveloppes détenues + déjà livrées
+    const val BAG_ITEM = 16    // facteur : une enveloppe
+    const val ROUTES = 17      // chaîne humaine : qui je peux joindre et en combien de sauts
+    const val ROUTED = 18      // chaîne humaine : trame acheminée de proche en proche
+
+    const val CAP_SMS = 1      // ce téléphone est un pont SMS
+    const val CAP_NET = 2      // ce téléphone partage son Internet
 
     const val WIFI = "Wi-Fi"
     const val BT = "Bluetooth"
     const val NET_IP = "Internet (IP)"
     const val NET_CODE = "Internet (code)"
+    const val CHAIN = "Chaîne humaine"
+    const val POST = "Facteur"
 
     val EMPTY = ByteArray(0)
 
@@ -38,6 +47,8 @@ object Proto {
         WIFI -> "📶"
         BT -> "🔵"
         NET_CODE -> "🔒🌐"
+        CHAIN -> "🔗"
+        POST -> "📮"
         else -> "🌐"
     }
 

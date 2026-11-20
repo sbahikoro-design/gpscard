@@ -52,7 +52,8 @@ data class Msg(
     val size: Long = -1,
     val durationMs: Int = 0,
     val time: Long = System.currentTimeMillis(),
-    val via: String = ""
+    val via: String = "",
+    val status: String = ""      // facteur : « confié au facteur », « livré »…
 ) {
     companion object {
         const val K_TEXT = 0
@@ -79,14 +80,14 @@ data class Msg(
     fun toJson(): JSONObject = JSONObject().apply {
         put("k", key); put("m", mine); put("oi", originId); put("o", origin); put("to", to); put("t", text)
         put("kd", kind); put("fr", fileRef ?: ""); put("fn", fileName ?: ""); put("s", size); put("d", durationMs)
-        put("tm", time); put("v", via)
+        put("tm", time); put("v", via); put("st", status)
     }
 }
 
 private fun msgFromJson(o: JSONObject) = Msg(
     o.optLong("k"), o.optBoolean("m"), o.optString("oi"), o.optString("o"), o.optString("to"), o.optString("t"),
     o.optInt("kd"), o.optString("fr").ifEmpty { null }, o.optString("fn").ifEmpty { null }, o.optLong("s", -1),
-    o.optInt("d"), o.optLong("tm"), o.optString("v")
+    o.optInt("d"), o.optLong("tm"), o.optString("v"), o.optString("st")
 )
 
 /**
@@ -156,7 +157,9 @@ object Hub {
         if (inited) return
         app = ctx.applicationContext
         myId = Prefs.deviceId(app)
+        Identity.init(app)
         Contacts.init(app)
+        Courier.init(app)
         loadHistory()
         inited = true
     }
@@ -266,19 +269,39 @@ object Hub {
 
     /** Maintient les liaisons ouvertes (box, opérateurs) et détecte les liaisons mortes. */
     private fun keepAliveLoop() {
+        var tick = 0
         while (running) {
-            try { Thread.sleep(25_000) } catch (_: Exception) {}
-            for (p in peers) if (p.alive) io.execute { p.send(Proto.PING, Proto.EMPTY) }
+            try { Thread.sleep(8_000) } catch (_: Exception) {}
+            tick++
+            Routing.prune()
+            val ready = readyPeers()
+            // Chaîne humaine : annonce régulière de qui je peux joindre
+            if (ready.isNotEmpty()) { val adv = Routing.advert(); for (p in ready) io.execute { p.send(Proto.ROUTES, adv) } }
+            if (tick % 3 == 0) {
+                val hello = helloPayload()
+                for (p in peers) if (p.alive) io.execute { p.send(Proto.HELLO, hello) }
+            }
+            // Facteur : comparer régulièrement les sacs
+            if (tick % 8 == 0 && ready.isNotEmpty()) { val sm = Courier.summary(); for (p in ready) io.execute { p.send(Proto.BAG_SUMMARY, sm) } }
+            val cp = callPeer
+            if (cp is Routing.VirtualPeer && Routing.route(cp.deviceId) == null && call != Call.IDLE)
+                finishCall("📵 Chaîne humaine coupée", cp.deviceId)
         }
     }
 
     private fun addPeer(p: Peer): Peer {
         peers.add(p)
         p.start()
-        val hello = pack { putStr(myId); putStr(myName()); writeInt(Proto.VERSION) }
-        io.execute { p.send(Proto.HELLO, hello) }
+        io.execute { p.send(Proto.HELLO, helloPayload()) }
         changed()
         return p
+    }
+
+    fun myCaps(): Int = (if (SmsBridge.active(app)) Proto.CAP_SMS else 0) or
+        (if (Relay.online && Prefs.shareInternet(app)) Proto.CAP_NET else 0)
+
+    private fun helloPayload() = pack {
+        putStr(myId); putStr(myName()); writeInt(Proto.VERSION); writeInt(myCaps()); putBytes(Identity.publicKey)
     }
 
     fun addRelayPeer(link: RelayLink, code: String, outgoing: Boolean): Peer =
@@ -286,6 +309,7 @@ object Hub {
 
     fun onPeerClosed(p: Peer, reason: String) {
         peers.remove(p)
+        Routing.onPeerClosed(p)
         for ((k, f) in inFiles) if (f.src === p) { inFiles.remove(k); f.target?.let { FileStore.abort(app, it) }; progress(null) }
         if (callPeer === p && call != Call.IDLE) finishCall("📵 Appel coupé : ${p.name} n'est plus joignable", p.deviceId)
         if (p.deviceId.isNotEmpty() && peers.none { it.alive && it.deviceId == p.deviceId })
@@ -508,7 +532,7 @@ object Hub {
     /** Ordre d'essai des accès pour joindre une personne. */
     fun plan(c: Contact, via: String?): List<String> {
         val acc = Contacts.access(c)
-        val order = listOf(Proto.WIFI, Proto.NET_IP, Proto.NET_CODE, Proto.BT)
+        val order = listOf(Proto.WIFI, Proto.NET_IP, Proto.NET_CODE, Proto.BT, Proto.CHAIN)
         val wanted = if (via != null) listOf(via) else order
         return wanted.filter { v -> acc.any { it.via == v } || (v == Proto.NET_CODE && c.code.isNotEmpty() && Relay.online) }
     }
@@ -538,6 +562,7 @@ object Hub {
                     Proto.NET_IP -> if (c.ip.isEmpty()) next() else connectIp(c.ip, c.port, 8000, after)
                     Proto.NET_CODE -> if (c.code.isEmpty()) next() else Relay.connect(c.code, after)
                     Proto.BT -> if (c.bt.isEmpty() || !btReady()) next() else connectBtAddress(c.bt, after)
+                    Proto.CHAIN -> { val v = Routing.virtualFor(c.id, c.name); if (v == null) next() else done(v) }
                     else -> next()
                 }
             }
@@ -564,10 +589,23 @@ object Hub {
     fun onFrame(p: Peer, type: Int, b: ByteArray) {
         when (type) {
             Proto.PING -> {}
+            Proto.BAG_SUMMARY -> Courier.onSummary(p, b)
+            Proto.BAG_ITEM -> Courier.onItem(p, b)
+            Proto.ROUTES -> Routing.onAdvert(p, b)
+            Proto.ROUTED -> Routing.onRouted(p, b)
             Proto.HELLO -> {
                 val d = DataInputStream(ByteArrayInputStream(b))
                 val id = d.getStr(); val name = d.getStr().ifBlank { "Correspondant" }
                 if (id == myId) { io.execute { p.close("soi-même", true) }; return }
+                if (d.available() >= 4) d.readInt()                        // version
+                if (d.available() >= 4) p.caps = d.readInt()
+                if (d.available() >= 4) p.pubKey = d.getBytes(1000).takeIf { it.isNotEmpty() }
+                if (p.deviceId == id) {                                      // présentation répétée : mise à jour
+                    p.name = name
+                    Contacts.upsertFromPeer(p)
+                    changed()
+                    return
+                }
                 val dup = peers.filter { it !== p && it.alive && it.deviceId == id && it.transport == p.transport }
                 if (dup.isNotEmpty()) {
                     // Double liaison par le même accès : les deux téléphones gardent la même
@@ -583,6 +621,9 @@ object Hub {
                 p.deviceId = id
                 Contacts.upsertFromPeer(p)
                 if (!already) addSystem("🔗 $name connecté (${Proto.icon(p.transport)} ${p.transport})")
+                // Premier contact : échange des sacs du facteur et des routes de la chaîne
+                val sm = Courier.summary(); val adv = Routing.advert()
+                io.execute { p.send(Proto.BAG_SUMMARY, sm); p.send(Proto.ROUTES, adv) }
                 changed()
                 main.post { events?.onPeersChanged() }
             }
@@ -669,6 +710,8 @@ object Hub {
         if (to.isNotEmpty()) {
             val direct = peerFor(to)
             if (direct != null) return if (direct !== from && direct.send(type, b, off, len)) 1 else 0
+            val chain = Routing.virtualFor(to)
+            if (chain != null && chain !== from && chain.send(type, b, off, len)) return 1
         }
         var n = 0
         val sentTo = HashSet<String>()
@@ -690,6 +733,14 @@ object Hub {
         val text = t.trim()
         if (text.isEmpty()) return
         val key = newKey()
+        if (to.isNotEmpty() && !reachableNow(to)) {
+            val c = Contacts.byId(to)
+            val inner = pack { writeByte(Proto.TEXT); writeLong(key); putStr(myName()); putStr(text) }
+            if (c != null && Courier.sendMail(c, key, inner)) {
+                addLocal(Msg(key, true, myId, myName(), to, text, Msg.K_TEXT, via = Proto.POST, status = "📮 Confié au facteur"))
+                return
+            }
+        }
         val payload = pack { writeLong(key); putStr(myId); putStr(myName()); putStr(to); putStr(text) }
         val via = viaFor(to)
         io.execute {
@@ -703,12 +754,73 @@ object Hub {
         val dest = File(voiceDir(), "$key.m4a")
         val audio = try { file.readBytes() } catch (e: Exception) { return }
         try { dest.writeBytes(audio); file.delete() } catch (_: Exception) {}
+        if (to.isNotEmpty() && !reachableNow(to) && audio.size < 600_000) {
+            val c = Contacts.byId(to)
+            val inner = pack { writeByte(Proto.VOICE); writeLong(key); putStr(myName()); writeInt(durationMs); putBytes(audio) }
+            if (c != null && Courier.sendMail(c, key, inner)) {
+                addLocal(Msg(key, true, myId, myName(), to, "", Msg.K_VOICE, fileRef = dest.absolutePath, durationMs = durationMs,
+                    via = Proto.POST, status = "📮 Confié au facteur"))
+                return
+            }
+        }
         val payload = pack { writeLong(key); putStr(myId); putStr(myName()); putStr(to); writeInt(durationMs); putBytes(audio) }
         val via = viaFor(to)
         io.execute {
             if (route(null, to, Proto.VOICE, payload) == 0) addSystem("⚠ Vocal non remis : personne n'est joignable.", to)
         }
         addLocal(Msg(key, true, myId, myName(), to, "", Msg.K_VOICE, fileRef = dest.absolutePath, durationMs = durationMs, via = via))
+    }
+
+    /** Joignable tout de suite (liaison directe ou chaîne humaine) ? */
+    fun reachableNow(id: String) = peerFor(id) != null || Routing.route(id) != null
+
+    // ------------------------------------------------------------------ facteur, lieux, SMS
+
+    /** Une lettre du facteur arrive pour moi. */
+    fun deliverMail(env: Envelope, plain: ByteArray) {
+        val d = DataInputStream(ByteArrayInputStream(plain))
+        val type = d.readUnsignedByte(); val key = d.readLong(); val name = d.getStr()
+        if (!seen.add(key)) return
+        if (type == Proto.TEXT) {
+            incoming(Msg(key, false, env.origin, name, myId, d.getStr(), Msg.K_TEXT, via = Proto.POST, time = env.created))
+        } else if (type == Proto.VOICE) {
+            val dur = d.readInt(); val audio = d.getBytes(6_000_000)
+            val f = File(voiceDir(), "$key.m4a")
+            try { f.writeBytes(audio) } catch (e: Exception) { return }
+            incoming(Msg(key, false, env.origin, name, myId, "", Msg.K_VOICE, fileRef = f.absolutePath, durationMs = dur,
+                via = Proto.POST, time = env.created))
+        }
+    }
+
+    fun onReceipt(ref: Long, what: Int) {
+        if (what == 2) Geo.markOpenedByRecipient(app, ref)
+        setStatus(ref, if (what == 2) "📍 Lu sur place" else "✅ Livré")
+    }
+
+    private fun setStatus(key: Long, st: String) = main.post {
+        val i = history.indexOfLast { it.key == key && it.mine }
+        if (i >= 0) { history[i] = history[i].copy(status = st); saveSoon(); for (o in observers.toList()) o() }
+    }
+
+    fun deliverPlaced(dr: Geo.Drop) {
+        if (!seen.add(dr.id)) return
+        incoming(Msg(dr.id, false, dr.fromId, dr.fromName, if (dr.forAll) "" else myId,
+            "📍 Message laissé ici pour vous : ${dr.text}", Msg.K_TEXT, via = "📍 Sur place"))
+    }
+
+    fun smsConv(number: String) = "sms:" + SmsBridge.digits(number)
+
+    fun addSmsOutgoing(id: Long, number: String, text: String, bridge: String) {
+        seen.add(id)
+        addLocal(Msg(id, true, myId, myName(), smsConv(number), text, Msg.K_TEXT, via = "🌉 Pont SMS", status = "📮 En route vers le pont de $bridge"))
+    }
+
+    fun onSmsStatus(ref: Long, number: String, err: String, bridge: String) =
+        setStatus(ref, if (err.isEmpty()) "✅ SMS envoyé par $bridge" else "⚠ $err")
+
+    fun addSmsIncoming(id: Long, number: String, text: String, bridge: String) {
+        if (!seen.add(id)) return
+        incoming(Msg(id, false, smsConv(number), "📱 $number", myId, text, Msg.K_TEXT, via = "🌉 Pont de $bridge"))
     }
 
     private fun viaFor(to: String): String = if (to.isEmpty()) "" else peerFor(to)?.transport ?: "relais du salon"
@@ -773,6 +885,7 @@ object Hub {
         Proto.WIFI -> 16000 to 20
         Proto.NET_IP -> 16000 to 40
         Proto.NET_CODE -> 8000 to 60
+        Proto.CHAIN -> 8000 to 40
         else -> 8000 to 20
     }
 

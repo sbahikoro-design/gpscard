@@ -44,6 +44,7 @@ object Relay {
     private const val T_ACK = 2
     private const val T_DATA = 3
     private const val T_CLOSE = 4
+    private const val T_ENV = 5          // enveloppe du facteur expédiée par Internet
     private const val CHUNK = 48_000
 
     class Broker(val label: String, val uris: Array<String>) {
@@ -182,6 +183,15 @@ object Relay {
         } catch (_: Exception) {}
         publishPresence(i, true)
         Hub.changed()
+        Courier.onInternet()
+    }
+
+    /** Facteur + partage d'Internet : dépose une enveloppe dans la boîte d'un code. */
+    fun sendEnvelope(code: String, bytes: ByteArray) {
+        val payload = pack { writeByte(T_ENV); writeLong(0L); write(bytes) }
+        for (i in brokers.indices) if (brokers[i].connected) {
+            try { publishTo(i, code, payload) } catch (_: Exception) {}
+        }
     }
 
     /** Suivre la présence d'un nouveau contact. */
@@ -268,6 +278,7 @@ object Relay {
                 links[sid]?.onData(ctr, ct)
             }
             T_CLOSE -> links.remove(sid)?.remoteClosed()
+            T_ENV -> Courier.onItem(null, payload.copyOfRange(9, payload.size))
         }
     }
 

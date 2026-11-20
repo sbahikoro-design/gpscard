@@ -37,6 +37,8 @@ class HubService : Service(), Hub.Events {
         private const val CH_SERVICE = "bscm_service"
         private const val CH_MSG = "bscm_msg"
         private const val CH_CALL = "bscm_call"
+        private const val CH_SOS = "bscm_sos"
+        private const val N_SOS = 4
         private const val N_SERVICE = 1
         private const val N_MSG = 2
         private const val N_CALL = 3
@@ -69,8 +71,8 @@ class HubService : Service(), Hub.Events {
         instance = this
         nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         channels()
-        goForeground()
         Hub.init(this)
+        goForeground()
         Hub.events = this
         Hub.startNetworking()
         Interphone.init(this)
@@ -78,6 +80,7 @@ class HubService : Service(), Hub.Events {
         locks()
         overlay = Overlay(this)
         applyBubble()
+        startLocation()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -96,7 +99,7 @@ class HubService : Service(), Hub.Events {
                 cancelMessageNotification(conv)
             }
             ACTION_REJECT -> Hub.reject()
-            else -> { goForeground(); Hub.startBtServer() }
+            else -> { goForeground(); Hub.startBtServer(); startLocation() }
         }
         applyBubble()
         return START_STICKY
@@ -110,6 +113,7 @@ class HubService : Service(), Hub.Events {
         try { wake?.release() } catch (_: Exception) {}
         try { wifiLock?.release() } catch (_: Exception) {}
         try { mcLock?.release() } catch (_: Exception) {}
+        stopLocation()
         instance = null
         super.onDestroy()
     }
@@ -120,6 +124,10 @@ class HubService : Service(), Hub.Events {
         if (Build.VERSION.SDK_INT < 26) return
         nm.createNotificationChannel(NotificationChannel(CH_SERVICE, "Service BS CALLMagic", NotificationManager.IMPORTANCE_LOW))
         nm.createNotificationChannel(NotificationChannel(CH_MSG, "Messages reçus", NotificationManager.IMPORTANCE_HIGH))
+        nm.createNotificationChannel(NotificationChannel(CH_SOS, "Alertes SOS", NotificationManager.IMPORTANCE_HIGH).apply {
+            setSound(null, null); lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            setBypassDnd(true)
+        })
         nm.createNotificationChannel(NotificationChannel(CH_CALL, "Appels entrants", NotificationManager.IMPORTANCE_HIGH).apply {
             setSound(null, null) // la sonnerie est jouée par le service
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
@@ -174,9 +182,10 @@ class HubService : Service(), Hub.Events {
             if (Build.VERSION.SDK_INT >= 30 &&
                 checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
                 types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            try { startForeground(N_SERVICE, n, types) }
-            catch (e: Exception) {
-                try { startForeground(N_SERVICE, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) } catch (_: Exception) {}
+            val withLoc = if (Loc.has(this)) types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else types
+            // Du plus complet au plus simple : certains Android refusent un type selon les autorisations
+            for (t in listOf(withLoc, types, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)) {
+                try { startForeground(N_SERVICE, n, t); break } catch (_: Exception) {}
             }
         } else startForeground(N_SERVICE, n)
     }
@@ -296,4 +305,74 @@ class HubService : Service(), Hub.Events {
     }
 
     fun cancelMessageNotification(conv: String) = try { nm.cancel(conv, N_MSG) } catch (_: Exception) {}
+
+    // ------------------------------------------------------------------ position (messages posés)
+
+    private var locListener: android.location.LocationListener? = null
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun startLocation() {
+        if (locListener != null || !Loc.has(this)) return
+        val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+        val l = object : android.location.LocationListener {
+            override fun onLocationChanged(loc: android.location.Location) {
+                Loc.last = loc
+                try { Geo.check(this@HubService, loc) } catch (_: Exception) {}
+            }
+            @Deprecated("Deprecated in Java")
+            override fun onStatusChanged(p: String?, s: Int, e: android.os.Bundle?) {}
+            override fun onProviderEnabled(p: String) {}
+            override fun onProviderDisabled(p: String) {}
+        }
+        locListener = l
+        for ((prov, every) in listOf(android.location.LocationManager.NETWORK_PROVIDER to 60_000L,
+                                     android.location.LocationManager.GPS_PROVIDER to 90_000L,
+                                     android.location.LocationManager.PASSIVE_PROVIDER to 30_000L)) {
+            try { lm.requestLocationUpdates(prov, every, 20f, l, android.os.Looper.getMainLooper()) } catch (_: Exception) {}
+        }
+        Loc.lastKnown(this)?.let { Loc.last = it; Geo.check(this, it) }
+    }
+
+    private fun stopLocation() {
+        val l = locListener ?: return
+        try { (getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager).removeUpdates(l) } catch (_: Exception) {}
+        locListener = null
+    }
+
+    // ------------------------------------------------------------------ SOS et notifications simples
+
+    fun onSos(a: Sos.Alert) {
+        val open = activityPi(40 + (a.id and 0xffff).toInt(), Intent(this, SosActivity::class.java))
+        val b = builder(CH_SOS)
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle("🆘 ALERTE — ${a.name}")
+            .setContentText("${a.type}${if (a.note.isNotBlank()) " — " + a.note else ""}")
+            .setCategory(Notification.CATEGORY_ALARM)
+            .setContentIntent(open)
+            .setFullScreenIntent(open, true)
+            .setAutoCancel(true)
+        if (Build.VERSION.SDK_INT < 26) legacyAlert(b, Notification.PRIORITY_MAX, false)
+        try { nm.notify(N_SOS, b.build()) } catch (_: Exception) {}
+        try { startActivity(Intent(this, SosActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+        overlay?.refresh()
+    }
+
+    fun onSosCancelled(ref: Long) {
+        try { nm.cancel(N_SOS) } catch (_: Exception) {}
+        SosAlarm.stop()
+        Hub.changed()
+    }
+
+    private var simpleId = 100
+    fun notifySimple(title: String, text: String) {
+        val b = builder(CH_MSG)
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setAutoCancel(true)
+            .setContentIntent(activityPi(90, Intent(this, MainActivity::class.java)))
+        try { nm.notify(simpleId++, b.build()) } catch (_: Exception) {}
+        if (simpleId > 140) simpleId = 100
+    }
 }

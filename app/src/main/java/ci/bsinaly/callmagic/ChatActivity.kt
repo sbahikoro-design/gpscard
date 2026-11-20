@@ -45,7 +45,8 @@ class ChatActivity : BaseActivity() {
     private val observer: () -> Unit = { render() }
 
     private val isSalon get() = target.isEmpty()
-    private fun contact(): Contact? = if (isSalon) null else People.contactFor(target)
+    private val isSms get() = target.startsWith("sms:")
+    private fun contact(): Contact? = if (isSalon || isSms) null else People.contactFor(target)
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -179,7 +180,15 @@ class ChatActivity : BaseActivity() {
 
     private fun render() {
         val ps = Hub.readyPeers()
-        if (isSalon) {
+        Ui.show(btnCall, !isSms); Ui.show(btnFile, !isSms); Ui.show(talk, !isSms)
+        if (isSms) {
+            val num = target.removePrefix("sms:")
+            titleView.text = "📱 $num"
+            val b = SmsBridge.bridges().firstOrNull { it.id == Prefs.lastBridge(this) }
+            subtitle.text = "Vrai SMS envoyé par un pont" + (if (b != null) " · pont : ${b.name}" else "")
+            input.hint = "SMS à $num…"
+            Ui.show(infoBox, false)
+        } else if (isSalon) {
             titleView.text = "💬 Salon" + if (ps.isNotEmpty()) " · ${ps.distinctBy { it.deviceId }.size + 1} membres" else ""
             subtitle.text = if (ps.isEmpty()) "🔴 Personne n'est connecté"
             else ps.distinctBy { it.deviceId }.joinToString(", ") { "${it.name} ${Proto.icon(it.transport)}" }
@@ -266,7 +275,8 @@ class ChatActivity : BaseActivity() {
             else -> m.text
         }
         box.addView(Ui.text(this, body, 15f, Ui.TEXT).apply { maxWidth = maxW })
-        val via = if (m.via.isNotEmpty()) "  ·  ${Proto.icon(m.via)} ${m.via}" else ""
+        val via = (if (m.via.isNotEmpty()) "  ·  ${if (m.via.first().isLetter()) Proto.icon(m.via) + " " else ""}${m.via}" else "") +
+            (if (m.status.isNotEmpty()) "\n${m.status}" else "")
         box.addView(Ui.text(this, m.hour + via, 10f, Ui.MUTED).apply { gravity = Gravity.END },
             LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
         val ref = m.fileRef
@@ -292,8 +302,10 @@ class ChatActivity : BaseActivity() {
             if (Hub.readyPeers().isEmpty()) { Ui.toast(this, "Aucun correspondant connecté."); return }
             action(); return
         }
-        if (Hub.peerFor(target) != null) { action(); return }
+        if (Hub.reachableNow(target)) { action(); return }
         val c = contact()
+        // Pas joignable maintenant mais clé connue : le facteur s'en charge, rien à attendre
+        if (c != null && c.pubKey() != null && Contacts.access(c).none { it.state <= Access.AVAILABLE }) { action(); return }
         if (c == null) { if (Hub.readyPeers().isNotEmpty()) action() else Ui.toast(this, "Personne injoignable."); return }
         People.connect(this, c, null, onFail = {
             if (Hub.readyPeers().isNotEmpty()) {
@@ -307,6 +319,7 @@ class ChatActivity : BaseActivity() {
         val t = input.text.toString().trim()
         if (t.isEmpty()) return
         input.setText("")
+        if (isSms) { People.sendSmsVia(this, target.removePrefix("sms:"), t) {}; return }
         withTarget { Hub.sendText(t, target) }
     }
 

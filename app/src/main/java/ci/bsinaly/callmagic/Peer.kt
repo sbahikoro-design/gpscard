@@ -9,7 +9,7 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /** Une connexion directe avec un autre téléphone (Wi-Fi ou Bluetooth). */
-class Peer(
+open class Peer(
     val transport: String,
     val address: String,
     val outgoing: Boolean,
@@ -18,6 +18,10 @@ class Peer(
     private val closer: () -> Unit
 ) {
     @Volatile var deviceId = ""
+    @Volatile var caps = 0
+    @Volatile var pubKey: ByteArray? = null
+    /** Enveloppes que ce correspondant possède déjà (facteur). */
+    val knownEnvelopes: MutableSet<Long> = java.util.Collections.synchronizedSet(HashSet())
     @Volatile var name = address
     @Volatile var alive = true
         private set
@@ -45,7 +49,7 @@ class Peer(
     }
 
     /** Envoi bloquant (hors du fil principal). */
-    fun send(type: Int, p: ByteArray, off: Int = 0, len: Int = p.size): Boolean {
+    open fun send(type: Int, p: ByteArray, off: Int = 0, len: Int = p.size): Boolean {
         if (!alive) return false
         return try {
             synchronized(lock) {

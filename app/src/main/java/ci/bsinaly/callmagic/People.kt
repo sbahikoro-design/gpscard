@@ -14,9 +14,38 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
-/** Activité de base : demandes d'autorisations avec suite. */
+/** Activité de base : demandes d'autorisations avec suite, choix de photo d'un contact. */
 open class BaseActivity : Activity() {
     private var afterPerms: (() -> Unit)? = null
+    private var photoFor: Contact? = null
+    private var photoDone: (() -> Unit)? = null
+
+    fun pickPhoto(c: Contact, done: () -> Unit) {
+        photoFor = c; photoDone = done
+        try { startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).setType("image/*"), 88) }
+        catch (_: Exception) { Ui.toast(this, "Aucune galerie disponible.") }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 88 || resultCode != RESULT_OK) return
+        val c = photoFor ?: return
+        val uri = data?.data ?: return
+        try {
+            val src = contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it) } ?: return
+            val side = minOf(src.width, src.height)
+            val sq = android.graphics.Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side)
+            val small = android.graphics.Bitmap.createScaledBitmap(sq, 360, 360, true)
+            val dir = java.io.File(filesDir, "faces").apply { mkdirs() }
+            val f = java.io.File(dir, "${c.key.hashCode()}.jpg")
+            f.outputStream().use { small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, it) }
+            if (!c.saved) Contacts.addFromDirectory(c)
+            c.photo = f.absolutePath
+            Contacts.save()
+            photoDone?.invoke()
+        } catch (_: Exception) { Ui.toast(this, "Photo illisible.") }
+    }
 
     fun needPerms(perms: List<String>, then: () -> Unit) {
         if (Build.VERSION.SDK_INT < 23) { then(); return }
@@ -71,6 +100,11 @@ object People {
         val box = Ui.vertical(a).apply { setPadding(Ui.dp(a, 20), Ui.dp(a, 8), Ui.dp(a, 20), Ui.dp(a, 8)) }
         box.addView(Ui.text(a, accessText(c), 13f, Ui.TEXT))
         if (c.code.isNotEmpty()) box.addView(Ui.text(a, "Code : ${Contacts.pretty(c.code)}", 12f, Ui.GOLD), Ui.lp(a, top = 6))
+        val extra = listOfNotNull(
+            if (c.caps and Proto.CAP_SMS != 0) "🌉 Pont SMS" else null,
+            if (c.caps and Proto.CAP_NET != 0) "🌐 Partage son Internet" else null,
+            if (c.pub.isNotEmpty()) "📮 Peut recevoir des lettres du facteur" else null)
+        if (extra.isNotEmpty()) box.addView(Ui.text(a, extra.joinToString(" · "), 12f, Ui.MUTED), Ui.lp(a, top = 4))
         val scroll = ScrollView(a).apply { addView(box) }
         lateinit var dlg: AlertDialog
         fun act(label: String, color: Int, f: () -> Unit) {
@@ -80,6 +114,7 @@ object People {
         act("📞  Appel vocal", Ui.GREEN) { call(a, c, false) }
         act("🎥  Appel vidéo", Ui.BLUE) { call(a, c, true) }
         act("📎  Envoyer un fichier", Ui.GREY) { openChat(a, c, pickFile = true) }
+        act("🖼  Choisir sa photo (mode sans lecture)", Ui.GREY) { a.pickPhoto(c, refresh) }
         act("✏️  Renommer", Ui.GREY) { rename(a, c, refresh) }
         if (!c.saved) act("➕  Enregistrer dans mes contacts", Ui.GREY) {
             Contacts.addFromDirectory(c); refresh()
@@ -178,6 +213,25 @@ object People {
         }
         AlertDialog.Builder(a).setTitle(title)
             .setItems(labels.toTypedArray()) { _, i -> then(dir[i]) }
+            .setNegativeButton("Annuler", null).show()
+    }
+
+    /** Envoie un SMS par un pont (le dernier utilisé, sinon au choix). */
+    fun sendSmsVia(a: Activity, number: String, text: String, then: () -> Unit) {
+        val bridges = SmsBridge.bridges()
+        if (bridges.isEmpty()) {
+            AlertDialog.Builder(a).setTitle("Aucun pont SMS connu")
+                .setMessage("Il faut qu'un téléphone de votre entourage active « Ce téléphone est un pont » (menu Pont SMS), " +
+                    "et que vous l'ayez rencontré au moins une fois.").setPositiveButton("OK", null).show()
+            return
+        }
+        val go = { b: Contact ->
+            if (SmsBridge.request(a, b, number, text)) then() else Ui.toast(a, "Impossible de joindre ce pont.")
+        }
+        val last = bridges.firstOrNull { it.id == Prefs.lastBridge(a) }
+        if (last != null || bridges.size == 1) { go(last ?: bridges[0]); return }
+        val labels = bridges.map { b -> "${stateIcon(b)} ${b.name}\n      ${Contacts.access(b).firstOrNull()?.label ?: "📮 par le facteur"}" }
+        AlertDialog.Builder(a).setTitle("Par quel pont ?").setItems(labels.toTypedArray()) { _, i -> go(bridges[i]) }
             .setNegativeButton("Annuler", null).show()
     }
 

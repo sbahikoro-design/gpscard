@@ -36,8 +36,8 @@ jobs:
       - name: Publication (lien de téléchargement direct)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: bs-callmagic-v3.0
-          name: BS CALLMagic v3.0
+          tag_name: bs-callmagic-v4.0
+          name: BS CALLMagic v4.0
           target_commitish: bs-callmagic
           files: BS_CALLMagic.apk
-          body: Nouveau — contact par Internet (code BS chiffré ou adresse IP), annuaire des personnes disponibles avec leur accès (Wi-Fi, Bluetooth, Internet), conversations privées, historique conservé. Toujours — salon de groupe, messages, vocaux, fichiers, appels audio et vidéo sans Internet (Wi-Fi ou Bluetooth), mode interphone, bulle flottante et réception en arrière-plan. Installer BS_CALLMagic.apk sur les deux téléphones.
+          body: v4 — facteur invisible (messages qui voyagent de téléphone en téléphone), pont SMS, partage d'Internet, SOS tam-tam, messages posés, mode sans lecture, chaîne humaine. Plus tout le reste — Wi-Fi, Bluetooth, Internet, appels audio et vidéo, interphone, bulle.

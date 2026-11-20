@@ -23,19 +23,35 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Clé de signature (secrets GitHub)
+      - name: Clé de signature (secret GitHub + clé chiffrée)
         id: key
         env:
           KS: ${{ secrets.BSCM_KEYSTORE }}
           PW: ${{ secrets.BSCM_PASSWORD }}
         run: |
-          if [ -n "$KS" ] && [ -n "$PW" ]; then
-            echo "$KS" | base64 -d > "$RUNNER_TEMP/bscm.jks"
+          PWT=$(printf '%s' "$PW" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          umask 077
+          ok=false
+          if [ -n "$PWT" ]; then
+            printf '%s' "$PWT" > "$RUNNER_TEMP/pw"
+            if [ -n "$KS" ]; then
+              echo "$KS" | base64 -d > "$RUNNER_TEMP/bscm.jks" && ok=true
+            elif [ -f signing/bscallmagic.jks.enc ]; then
+              # Clé stockée chiffrée (AES-256) : seul le mot de passe secret permet de l'ouvrir
+              openssl enc -d -aes-256-cbc -md sha256 -pbkdf2 -iter 300000 -in signing/bscallmagic.jks.enc \
+                -out "$RUNNER_TEMP/bscm.jks" -pass file:"$RUNNER_TEMP/pw" && ok=true
+            fi
+            rm -f "$RUNNER_TEMP/pw"
+          fi
+          if [ "$ok" = true ] && keytool -list -keystore "$RUNNER_TEMP/bscm.jks" -storepass "$PWT" -alias bscallmagic >/dev/null 2>&1; then
             echo "BSCM_KEYSTORE_FILE=$RUNNER_TEMP/bscm.jks" >> "$GITHUB_ENV"
-            echo "BSCM_PASSWORD=$PW" >> "$GITHUB_ENV"
+            echo "::add-mask::$PWT"
+            echo "BSCM_PASSWORD=$PWT" >> "$GITHUB_ENV"
             echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "Clé de signature BSINALY prête."
           else
-            echo "::warning::Secrets BSCM_KEYSTORE / BSCM_PASSWORD absents : compilation de contrôle seulement, rien n'est publié."
+            rm -f "$RUNNER_TEMP/bscm.jks"
+            echo "::warning::Clé de signature indisponible (mot de passe absent ou incorrect) : compilation de contrôle seulement, rien n'est publié."
             echo "signed=false" >> "$GITHUB_OUTPUT"
           fi
 

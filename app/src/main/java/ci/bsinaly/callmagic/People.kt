@@ -16,6 +16,19 @@ import android.widget.TextView
 
 /** Activité de base : demandes d'autorisations avec suite, choix de photo d'un contact. */
 open class BaseActivity : Activity() {
+    /** Écrans qui doivent s'afficher même verrouillé (alertes). */
+    open val lockExempt = false
+
+    override fun onResume() {
+        super.onResume()
+        if (!lockExempt) Lock.onResumeCheck(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Lock.onPause()
+    }
+
     private var afterPerms: (() -> Unit)? = null
     private var photoFor: Contact? = null
     private var photoDone: (() -> Unit)? = null
@@ -83,7 +96,7 @@ object People {
     fun row(a: Activity, c: Contact, onClick: () -> Unit): View {
         val card = Ui.card(a)
         val top = Ui.horizontal(a).apply { gravity = Gravity.CENTER_VERTICAL }
-        top.addView(Ui.text(a, "${stateIcon(c)}  ${c.name}", 17f, Ui.TEXT, true), LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+        top.addView(Ui.text(a, "${stateIcon(c)}  ${c.name}" + if (c.verified) "  ✅" else "", 17f, Ui.TEXT, true), LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
         val unread = if (c.id.isNotEmpty()) Hub.unreadBy[c.id] ?: 0 else 0
         if (unread > 0) top.addView(Ui.text(a, " $unread ", 12f, Ui.TEXT, true).apply {
             background = Ui.rounded(Ui.RED, Ui.dp(a, 10).toFloat())
@@ -105,6 +118,20 @@ object People {
             if (c.caps and Proto.CAP_NET != 0) "🌐 Partage son Internet" else null,
             if (c.pub.isNotEmpty()) "📮 Peut recevoir des lettres du facteur" else null)
         if (extra.isNotEmpty()) box.addView(Ui.text(a, extra.joinToString(" · "), 12f, Ui.MUTED), Ui.lp(a, top = 4))
+        val pk = c.pubKey()
+        if (pk != null) {
+            val code = Identity.safetyCode(Identity.publicKey, pk)
+            val sec = Ui.card(a)
+            sec.addView(Ui.text(a, if (c.verified) "✅ Identité vérifiée en personne" else "🔐 Vérifier que c'est bien ${c.name}", 14f, Ui.GOLD, true))
+            sec.addView(Ui.text(a, code, 26f, Ui.TEXT, true), Ui.lp(a, top = 4))
+            sec.addView(Ui.text(a, "Ouvrez cette fiche sur les deux téléphones : le code doit être exactement le même. " +
+                "S'il diffère, ce n'est pas la bonne personne.", 12f, Ui.MUTED), Ui.lp(a, top = 2))
+            if (!c.verified) sec.addView(Ui.button(a, "✅ Les codes sont identiques", Ui.GREEN) {
+                if (!c.saved) Contacts.addFromDirectory(c)
+                c.verified = true; Contacts.save(); refresh(); Ui.toast(a, "${c.name} est vérifié.")
+            }, Ui.lp(a, top = 8))
+            box.addView(sec, Ui.lp(a, top = 10))
+        }
         val scroll = ScrollView(a).apply { addView(box) }
         lateinit var dlg: AlertDialog
         fun act(label: String, color: Int, f: () -> Unit) {

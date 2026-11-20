@@ -32,6 +32,7 @@ class MainActivity : BaseActivity() {
     private lateinit var bAuto: Button
     private lateinit var bBattery: Button
     private lateinit var sosBtn: Button
+    private lateinit var bLock: Button
     private val handler = Handler(Looper.getMainLooper())
     private val observer: () -> Unit = { render() }
     private val ticker = object : Runnable {
@@ -55,11 +56,16 @@ class MainActivity : BaseActivity() {
         sosBtn.textSize = 17f
         var armed: Runnable? = null
         sosBtn.setOnTouchListener { _, e ->
+            val active = Sos.myActive != 0L
             when (e.action) {
-                android.view.MotionEvent.ACTION_DOWN -> { armed = Runnable { askSos() }.also { handler.postDelayed(it, 1800) }; true }
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    if (!active) armed = Runnable { askSos() }.also { handler.postDelayed(it, 1800) }
+                    true
+                }
                 android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
-                    armed?.let { handler.removeCallbacks(it) }
-                    if (Sos.myActive != 0L && e.action == android.view.MotionEvent.ACTION_UP) confirmCancelSos()
+                    armed?.let { handler.removeCallbacks(it) }; armed = null
+                    // Alerte en cours : un simple toucher suffit pour l'annuler
+                    if (active && e.action == android.view.MotionEvent.ACTION_UP) confirmCancelSos()
                     true
                 }
                 else -> true
@@ -145,6 +151,9 @@ class MainActivity : BaseActivity() {
         bAuto = Ui.button(this, "", Ui.GREY) { Prefs.setAutoJoin(this, !Prefs.autoJoin(this)); render() }
         root.addView(bAuto, Ui.lp(this, top = 10))
         root.addView(Ui.text(this, "Sur un même Wi-Fi, les téléphones BS CALLMagic se connectent automatiquement.", 12f, Ui.MUTED), Ui.lp(this, top = 2))
+        bLock = Ui.button(this, "", Ui.GREY) { toggleLock() }
+        root.addView(bLock, Ui.lp(this, top = 10))
+        root.addView(Ui.text(this, "Code (et empreinte) demandé à l'ouverture. Verrouillé, les notifications et la bulle ne montrent plus le contenu des messages.", 12f, Ui.MUTED), Ui.lp(this, top = 2))
         root.addView(Ui.button(this, "🆘 Numéros prévenus par SMS en cas d'alerte…", Ui.GREY) { sosNumbers() }, Ui.lp(this, top = 10))
         root.addView(Ui.button(this, "🗣 Passer en mode sans lecture", Ui.GREY) {
             android.app.AlertDialog.Builder(this).setTitle("Mode sans lecture")
@@ -179,7 +188,11 @@ class MainActivity : BaseActivity() {
     }
 
     private fun render() {
-        sosBtn.text = if (Sos.myActive != 0L) "🆘 ALERTE EN COURS — toucher pour annuler (fausse alerte)" else "🆘 SOS — gardez le doigt 2 secondes"
+        sosBtn.text = if (Sos.myActive != 0L) {
+            val min = ((System.currentTimeMillis() - Sos.myActiveSince()) / 60_000).toInt()
+            "🆘 VOTRE ALERTE EST EN COURS (${min} min)\nTouchez ici pour l'arrêter"
+        } else "🆘 SOS — gardez le doigt 2 secondes"
+        sosBtn.background = Ui.rounded(if (Sos.myActive != 0L) 0xFF8B0000.toInt() else Ui.RED, Ui.dp(this, 12).toFloat())
         val carried = Courier.carriedForOthers()
         val active = Sos.alerts.count { !it.cancelled && System.currentTimeMillis() - it.time < 6 * 3600_000 }
         codeText.text = Contacts.pretty(Hub.myCode())
@@ -210,6 +223,9 @@ class MainActivity : BaseActivity() {
         bAuto.text = "🔗 Connexion automatique Wi-Fi : " + if (Prefs.autoJoin(this)) "ACTIVÉE" else "désactivée"
         bAuto.background = Ui.rounded(if (Prefs.autoJoin(this)) Ui.GREEN else Ui.GREY, Ui.dp(this, 12).toFloat())
         Ui.show(bBattery, !batteryIgnored())
+        val locked = Lock.enabled(this)
+        bLock.text = "🔒 Verrouillage de l'application : " + if (locked) "ACTIVÉ" else "désactivé"
+        bLock.background = Ui.rounded(if (locked) Ui.GREEN else Ui.GREY, Ui.dp(this, 12).toFloat())
     }
 
     private fun copyCode() {
@@ -267,12 +283,60 @@ class MainActivity : BaseActivity() {
                 val note = EditText(this).apply { hint = "Précision (facultatif) : lieu, ce qu'il faut…" }
                 android.app.AlertDialog.Builder(this).setTitle(Sos.TYPES[i]).setView(note)
                     .setPositiveButton("ENVOYER L'ALERTE") { _, _ ->
-                        val go = {
-                            Ui.toast(this, "Envoi de l'alerte avec votre position…")
-                            Sos.send(this, Sos.TYPES[i], note.text.toString().trim()) { render() }
-                        }
+                        val go = { countdown(Sos.TYPES[i], note.text.toString().trim()) }
                         if (Prefs.sosNumbers(this).isNotBlank() && BuildConfig.SMS) needPerms(listOf("android.permission.SEND_SMS", Manifest.permission.ACCESS_FINE_LOCATION)) { go() }
                         else needPerms(listOf(Manifest.permission.ACCESS_FINE_LOCATION)) { go() }
+                    }.setNegativeButton("Annuler", null).show()
+            }.setNegativeButton("Annuler", null).show()
+    }
+
+    /** 5 secondes pour se raviser avant que l'alerte parte. */
+    private fun countdown(type: String, note: String) {
+        var left = 5
+        val tv = android.widget.TextView(this).apply {
+            textSize = 46f; gravity = android.view.Gravity.CENTER; setTextColor(Ui.RED)
+            setPadding(0, Ui.dp(this@MainActivity, 20), 0, Ui.dp(this@MainActivity, 20))
+        }
+        lateinit var dlg: android.app.AlertDialog
+        val tick = object : Runnable {
+            override fun run() {
+                if (!dlg.isShowing) return
+                if (left <= 0) {
+                    dlg.dismiss()
+                    Ui.toast(this@MainActivity, "Envoi de l'alerte avec votre position…")
+                    Sos.send(this@MainActivity, type, note) { render() }
+                    return
+                }
+                tv.text = left.toString(); left--
+                handler.postDelayed(this, 1000)
+            }
+        }
+        dlg = android.app.AlertDialog.Builder(this).setTitle("$type — envoi dans…").setView(tv).setCancelable(false)
+            .setNegativeButton("ANNULER") { _, _ -> handler.removeCallbacks(tick) }.create()
+        dlg.show()
+        handler.post(tick)
+    }
+
+    private fun toggleLock() {
+        val e = EditText(this).apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD; hint = "4 à 8 chiffres" }
+        if (Lock.enabled(this)) {
+            android.app.AlertDialog.Builder(this).setTitle("Désactiver le verrouillage").setMessage("Entrez votre code actuel :").setView(e)
+                .setPositiveButton("Désactiver") { _, _ ->
+                    if (Lock.check(this, e.text.toString())) { Lock.disable(this); render() } else Ui.toast(this, "Code incorrect.")
+                }.setNegativeButton("Annuler", null).show()
+            return
+        }
+        android.app.AlertDialog.Builder(this).setTitle("Choisissez un code").setView(e)
+            .setPositiveButton("Suivant") { _, _ ->
+                val p1 = e.text.toString()
+                if (p1.length !in 4..8) { Ui.toast(this, "Le code doit faire 4 à 8 chiffres."); return@setPositiveButton }
+                val e2 = EditText(this).apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD }
+                android.app.AlertDialog.Builder(this).setTitle("Confirmez le code").setView(e2)
+                    .setPositiveButton("Activer") { _, _ ->
+                        if (e2.text.toString() == p1) {
+                            Lock.setPin(this, p1); render()
+                            Ui.toast(this, "Verrouillage activé" + if (Lock.biometricAvailable(this)) " (empreinte possible)." else ".")
+                        } else Ui.toast(this, "Les deux codes sont différents.")
                     }.setNegativeButton("Annuler", null).show()
             }.setNegativeButton("Annuler", null).show()
     }

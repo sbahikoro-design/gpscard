@@ -156,8 +156,10 @@ object Hub {
     fun init(ctx: Context) {
         if (inited) return
         app = ctx.applicationContext
-        myId = Prefs.deviceId(app)
         Identity.init(app)
+        // v5 : l'identifiant EST l'empreinte de la clé d'identité (auto-certifié)
+        myId = Identity.idOf(Identity.publicKey)
+        Prefs.raw(app).edit().putString("id", myId).apply()
         Contacts.init(app)
         Courier.init(app)
         loadHistory()
@@ -292,7 +294,6 @@ object Hub {
     private fun addPeer(p: Peer): Peer {
         peers.add(p)
         p.start()
-        io.execute { p.send(Proto.HELLO, helloPayload()) }
         changed()
         return p
     }
@@ -302,6 +303,11 @@ object Hub {
 
     private fun helloPayload() = pack {
         putStr(myId); putStr(myName()); writeInt(Proto.VERSION); writeInt(myCaps()); putBytes(Identity.publicKey)
+    }
+
+    /** Poignée de main sécurisée réussie : on se présente (sur le fil de la liaison). */
+    fun onPeerSecured(p: Peer) {
+        p.send(Proto.HELLO, helloPayload())
     }
 
     fun addRelayPeer(link: RelayLink, code: String, outgoing: Boolean): Peer =
@@ -599,7 +605,20 @@ object Hub {
                 if (id == myId) { io.execute { p.close("soi-même", true) }; return }
                 if (d.available() >= 4) p.version = d.readInt()
                 if (d.available() >= 4) p.caps = d.readInt()
-                if (d.available() >= 4) p.pubKey = d.getBytes(1000).takeIf { it.isNotEmpty() }
+                if (d.available() >= 4) d.getBytes(1000)                   // clé annoncée : ignorée, seule compte la clé prouvée
+                // Sécurité : l'identifiant doit être l'empreinte de la clé prouvée pendant la poignée de main
+                val proven = p.pubKey
+                if (proven == null || Identity.idOf(proven) != id) {
+                    addSystem("⚠ Sécurité : un appareil a présenté une fausse identité (« $name »). Connexion refusée.")
+                    io.execute { p.close("identité falsifiée", false) }
+                    return
+                }
+                // Par Internet (code) : la personne jointe doit être celle du code demandé
+                if (p.transport == Proto.NET_CODE && Contacts.codeOf(id) != p.address) {
+                    addSystem("⚠ Sécurité : quelqu'un a répondu à la place de ${Contacts.pretty(p.address)}. Connexion refusée.")
+                    io.execute { p.close("mauvais correspondant", false) }
+                    return
+                }
                 if (p.deviceId == id) {                                      // présentation répétée : mise à jour
                     p.name = name
                     Contacts.upsertFromPeer(p)

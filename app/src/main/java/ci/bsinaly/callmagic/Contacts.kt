@@ -19,7 +19,8 @@ class Contact(
     var saved: Boolean = true,
     var pub: String = "",    // clé publique (base64) : permet le courrier chiffré du facteur
     var caps: Int = 0,       // pont SMS, partage d'Internet…
-    var photo: String = ""   // visage choisi pour le mode sans lecture
+    var photo: String = "",  // visage choisi pour le mode sans lecture
+    var verified: Boolean = false   // code de sécurité comparé en personne
 ) {
     fun pubKey(): ByteArray? = if (pub.isEmpty()) null else try { android.util.Base64.decode(pub, android.util.Base64.NO_WRAP) } catch (_: Exception) { null }
     /** Clé de conversation privée. */
@@ -52,7 +53,7 @@ object Contacts {
                 list.add(Contact(
                     o.optString("id"), o.optString("name"), o.optString("code"), o.optString("ip"),
                     o.optInt("port", Hub.PORT), o.optString("lan"), o.optString("bt"), o.optLong("seen"), o.optString("via"),
-                    true, o.optString("pub"), o.optInt("caps"), o.optString("photo")
+                    true, o.optString("pub"), o.optInt("caps"), o.optString("photo"), o.optBoolean("ver")
                 ))
             }
         } catch (_: Exception) {}
@@ -65,7 +66,7 @@ object Contacts {
             for (k in list) arr.put(JSONObject().apply {
                 put("id", k.id); put("name", k.name); put("code", k.code); put("ip", k.ip); put("port", k.port)
                 put("lan", k.lanIp); put("bt", k.bt); put("seen", k.lastSeen); put("via", k.lastVia)
-                put("pub", k.pub); put("caps", k.caps); put("photo", k.photo)
+                put("pub", k.pub); put("caps", k.caps); put("photo", k.photo); put("ver", k.verified)
             })
         }
         c.getSharedPreferences("bscm", Context.MODE_PRIVATE).edit().putString("contacts", arr.toString()).apply()
@@ -148,22 +149,23 @@ object Contacts {
 
     // ------------------------------------------------------------------ code BS
 
+    /** Code BS sur 60 bits (12 caractères) : trop long pour être deviné ou forgé. */
     fun codeOf(id: String): String {
-        val h = MessageDigest.getInstance("SHA-256").digest(id.toByteArray())
+        val h = MessageDigest.getInstance("SHA-256").digest(("BSCM5|" + id).toByteArray())
         var bits = 0L
-        for (i in 0 until 5) bits = (bits shl 8) or (h[i].toLong() and 0xff)
+        for (i in 0 until 8) bits = (bits shl 8) or (h[i].toLong() and 0xff)
         val sb = StringBuilder("BS")
-        for (i in 7 downTo 0) sb.append(ALPHA[((bits shr (i * 5)) and 31).toInt()])
+        for (i in 11 downTo 0) sb.append(ALPHA[((bits ushr (i * 5)) and 31).toInt()])
         return sb.toString()
     }
 
     fun pretty(code: String): String =
-        if (code.length == 10) "BS-${code.substring(2, 6)}-${code.substring(6)}" else code
+        if (code.length == 14) "BS-${code.substring(2, 6)}-${code.substring(6, 10)}-${code.substring(10)}" else code
 
     /** Trouve un code BS dans un texte (tolère espaces, tirets, minuscules, O/0 et I/1). */
     fun parseCode(text: String): String? {
-        val m = Regex("BS[\\s-]*([0-9A-Za-z]{4})[\\s-]*([0-9A-Za-z]{4})", RegexOption.IGNORE_CASE).find(text) ?: return null
-        val raw = (m.groupValues[1] + m.groupValues[2]).uppercase()
+        val m = Regex("BS[\\s-]*([0-9A-Za-z]{4})[\\s-]*([0-9A-Za-z]{4})[\\s-]*([0-9A-Za-z]{4})", RegexOption.IGNORE_CASE).find(text) ?: return null
+        val raw = (m.groupValues[1] + m.groupValues[2] + m.groupValues[3]).uppercase()
             .replace('O', '0').replace('I', '1').replace('L', '1').replace('U', 'V')
         return if (raw.all { it in ALPHA }) "BS$raw" else null
     }

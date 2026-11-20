@@ -23,6 +23,22 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Clé de signature (secrets GitHub)
+        id: key
+        env:
+          KS: ${{ secrets.BSCM_KEYSTORE }}
+          PW: ${{ secrets.BSCM_PASSWORD }}
+        run: |
+          if [ -n "$KS" ] && [ -n "$PW" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/bscm.jks"
+            echo "BSCM_KEYSTORE_FILE=$RUNNER_TEMP/bscm.jks" >> "$GITHUB_ENV"
+            echo "BSCM_PASSWORD=$PW" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Secrets BSCM_KEYSTORE / BSCM_PASSWORD absents : compilation de contrôle seulement, rien n'est publié."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Compilation
         run: |
           gradle assembleStandardRelease assemblePontRelease --no-daemon
@@ -30,19 +46,25 @@ jobs:
           cp app/build/outputs/apk/pont/release/app-pont-release.apk BS_CALLMagic_PontSMS.apk
 
       - uses: actions/upload-artifact@v4
+        if: steps.key.outputs.signed == 'true'
         with:
           name: BS_CALLMagic-apk
           path: |
             BS_CALLMagic.apk
             BS_CALLMagic_PontSMS.apk
 
+      - name: Effacer la clé
+        if: always()
+        run: rm -f "$RUNNER_TEMP/bscm.jks"
+
       - name: Publication (lien de téléchargement direct)
+        if: steps.key.outputs.signed == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: bs-callmagic-v4.1
-          name: BS CALLMagic v4.1
+          tag_name: bs-callmagic-v5.0
+          name: BS CALLMagic v5.0
           target_commitish: bs-callmagic
           files: |
             BS_CALLMagic.apk
             BS_CALLMagic_PontSMS.apk
-          body: v4.1 — BS_CALLMagic.apk = édition normale (sans autorisation SMS, acceptée par Play Protect) pour tout le monde. BS_CALLMagic_PontSMS.apk = seulement pour les téléphones qui servent de pont SMS. Signature fixe BSINALY.
+          body: v5.0 — toutes les liaisons chiffrées et authentifiées, identités infalsifiables, code de sécurité, verrouillage par code/empreinte, chaîne humaine chiffrée de bout en bout, SOS maîtrisé (compte à rebours, arrêt, sirène limitée, alertes signées). BS_CALLMagic.apk = édition normale ; BS_CALLMagic_PontSMS.apk = téléphones pont SMS uniquement. Signature BSINALY (clé hors du dépôt).

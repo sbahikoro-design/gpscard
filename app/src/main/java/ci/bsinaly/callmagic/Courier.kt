@@ -88,9 +88,9 @@ object Courier {
     fun newId(): Long = rnd.nextLong()
 
     /** Crée une enveloppe, la garde dans le sac et la fait circuler. */
-    fun create(kind: Int, dest: String, destCode: String, payload: ByteArray, ttlDays: Int = 7, id: Long = newId()): Envelope {
+    fun create(kind: Int, dest: String, destCode: String, payload: ByteArray, ttlDays: Int = 7, id: Long = newId(), ttlMs: Long = 0L): Envelope {
         val now = System.currentTimeMillis()
-        val env = Envelope(id, kind, dest, destCode, Hub.myId, Hub.myCode(), now, now + ttlDays * DAY, 0, payload)
+        val env = Envelope(id, kind, dest, destCode, Hub.myId, Hub.myCode(), now, now + (if (ttlMs > 0) ttlMs else ttlDays * DAY), 0, payload)
         synchronized(lock) { bag[env.id] = env }
         if (kind == Envelope.SOS || dest == "*") synchronized(lock) { broadcastSeen.add(env.id) }
         saveSoon()
@@ -102,7 +102,8 @@ object Courier {
     fun sendMail(c: Contact, key: Long, inner: ByteArray): Boolean {
         val pub = c.pubKey() ?: return false
         val tmp = ByteBuffer.allocate(8).putLong(key).array()
-        create(Envelope.MAIL, c.id, c.code, Identity.seal(pub, inner, tmp), 7, key)
+        // Signée par moi puis scellée pour le destinataire : ni lisible, ni falsifiable en route
+        create(Envelope.MAIL, c.id, c.code, Identity.seal(pub, Identity.signedPack(inner, tmp), tmp), 7, key)
         return true
     }
 
@@ -261,19 +262,19 @@ object Courier {
 
     // ------------------------------------------------------------------ remise au destinataire
 
+    /** Ouvre (si scellée) puis vérifie la signature de l'expéditeur annoncé ; null si faux. */
+    private fun authentic(env: Envelope, sealed: Boolean): ByteArray? {
+        val plain = if (sealed) Identity.open(env.payload, env.idBytes) ?: return null else env.payload
+        return Identity.openSigned(plain, env.idBytes, env.origin)?.first
+    }
+
     private fun deliver(env: Envelope) {
         try {
             when (env.kind) {
-                Envelope.MAIL -> {
-                    val plain = Identity.open(env.payload, env.idBytes) ?: return
-                    Hub.deliverMail(env, plain)
-                }
-                Envelope.SMS_REQ -> Identity.open(env.payload, env.idBytes)?.let { SmsBridge.onRequest(env, it) }
-                Envelope.SMS_RES -> Identity.open(env.payload, env.idBytes)?.let { SmsBridge.onResult(env, it) }
-                Envelope.GEO -> {
-                    val plain = if (env.dest == "*") env.payload else Identity.open(env.payload, env.idBytes) ?: return
-                    Geo.onReceived(env, plain)
-                }
+                Envelope.MAIL -> authentic(env, true)?.let { Hub.deliverMail(env, it) }
+                Envelope.SMS_REQ -> authentic(env, true)?.let { SmsBridge.onRequest(env, it) }
+                Envelope.SMS_RES -> authentic(env, true)?.let { SmsBridge.onResult(env, it) }
+                Envelope.GEO -> authentic(env, env.dest != "*")?.let { Geo.onReceived(env, it) }
                 Envelope.SOS -> Sos.onAlert(env)
                 Envelope.SOS_REPLY -> Sos.onReply(env)
                 Envelope.SOS_CANCEL -> Sos.onCancel(env)

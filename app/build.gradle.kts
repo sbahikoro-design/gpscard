@@ -11,21 +11,25 @@ android {
         applicationId = "ci.bsinaly.callmagic"
         minSdk = 21
         targetSdk = 34
-        versionCode = 41
-        versionName = "4.1"
+        versionCode = 50
+        versionName = "5.0"
     }
 
     buildFeatures {
         buildConfig = true
     }
 
-    // Clé de signature fixe (BSINALY) : mêmes signatures d'une version à l'autre → mises à jour sans désinstaller
+    // Clé de signature BSINALY : jamais dans le dépôt. Elle est fournie à la compilation par les
+    // secrets GitHub (BSCM_KEYSTORE, BSCM_PASSWORD) et n'existe que le temps de la compilation.
+    val ksFile = System.getenv("BSCM_KEYSTORE_FILE")
+    val ksPass = System.getenv("BSCM_PASSWORD")
+    val signed = !ksFile.isNullOrEmpty() && !ksPass.isNullOrEmpty()
     signingConfigs {
-        create("bsinaly") {
-            storeFile = file("../keystore/bscallmagic.jks")
-            storePassword = "BsCallMagic-Odienne-2026"
+        if (signed) create("bsinaly") {
+            storeFile = file(ksFile!!)
+            storePassword = ksPass
             keyAlias = "bscallmagic"
-            keyPassword = "BsCallMagic-Odienne-2026"
+            keyPassword = ksPass
         }
     }
 
@@ -47,7 +51,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("bsinaly")
+            // Sans la clé (compilation de contrôle), on signe en « debug » ; ces APK ne sont jamais publiés
+            signingConfig = signingConfigs.getByName(if (signed) "bsinaly" else "debug")
         }
     }
 

@@ -12,7 +12,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /** Mode Wi-Fi : appareils détectés sur le réseau, connexion directe ou par adresse IP. */
-class WifiActivity : Activity() {
+class WifiActivity : BaseActivity() {
 
     private lateinit var ipText: TextView
     private lateinit var status: TextView

@@ -91,39 +91,63 @@ object Loc {
 
 object Sos {
     val TYPES = listOf("🚗 Accident", "🤒 Malade / blessé", "🔥 Feu", "⚠ Agression / danger", "🆘 Autre urgence")
+    private const val VALID_MS = 2 * 3600_000L          // une alerte vit 2 h, pas plus
+    private const val RING_MAX_AGE = 20 * 60_000L        // on ne fait sonner que les alertes de moins de 20 min
+
+    /** Réception des alertes : 0 = sirène pour tous, 1 = sirène pour mes contacts seulement, 2 = notification simple. */
+    const val MODE_ALL = 0
+    const val MODE_CONTACTS = 1
+    const val MODE_QUIET = 2
+    fun mode(c: Context) = Prefs.raw(c).getInt("sos_mode", MODE_CONTACTS)
+    fun setMode(c: Context, m: Int) = Prefs.raw(c).edit().putInt("sos_mode", m).apply()
 
     class Alert(val id: Long, val origin: String, val originCode: String, val name: String, val type: String, val note: String,
-                val lat: Double, val lon: Double, val acc: Float, val time: Long, var cancelled: Boolean = false,
-                val replies: MutableList<String> = mutableListOf())
+                val lat: Double, val lon: Double, val acc: Float, val time: Long, val known: Boolean,
+                var cancelled: Boolean = false, val replies: MutableList<String> = mutableListOf())
 
     val alerts = ArrayList<Alert>()         // fil principal
-    @Volatile var myActive: Long = 0L
 
-    /** Envoie l'alerte : elle saute de téléphone en téléphone, part par Internet et par SMS. */
+    /** Mon alerte en cours (gardée même si le téléphone redémarre). */
+    var myActive: Long
+        get() {
+            val sp = Prefs.raw(Hub.app)
+            val at = sp.getLong("sos_mine_at", 0L)
+            return if (System.currentTimeMillis() - at < VALID_MS) sp.getLong("sos_mine", 0L) else 0L
+        }
+        set(v) { Prefs.raw(Hub.app).edit().putLong("sos_mine", v).putLong("sos_mine_at", if (v == 0L) 0L else System.currentTimeMillis()).apply() }
+
+    fun myActiveSince(): Long = Prefs.raw(Hub.app).getLong("sos_mine_at", 0L)
+
+    private fun ctx(id: Long) = java.nio.ByteBuffer.allocate(8).putLong(id).array()
+
+    /** Envoie l'alerte (signée) : elle saute de téléphone en téléphone, part par Internet et par SMS. */
     fun send(c: Context, type: String, note: String, done: (Boolean) -> Unit) {
         Loc.current(c, 12_000) { loc ->
             val numbers = Prefs.sosNumbers(c)
-            val payload = pack {
+            val id = Courier.newId()
+            val body = pack {
                 putStr(Hub.myName()); putStr(type); putStr(note)
                 writeDouble(loc?.latitude ?: Double.NaN); writeDouble(loc?.longitude ?: Double.NaN)
                 writeFloat(loc?.accuracy ?: 0f); writeLong(System.currentTimeMillis()); putStr(numbers)
             }
-            val env = Courier.create(Envelope.SOS, "*", "", payload, 2)
-            myActive = env.id
+            Courier.create(Envelope.SOS, "*", "", Identity.signedPack(body, ctx(id)), 1, id, ttlMs = VALID_MS)
+            myActive = id
             val text = smsText(Hub.myName(), type, note, loc?.latitude, loc?.longitude)
             var sent = sendSms(c, numbers, text)
             // Édition standard : on ouvre l'application SMS du téléphone avec le message déjà écrit
             if (sent == 0 && numbers.isNotBlank()) sent = openSmsComposer(c, numbers, text)
             Hub.addSystem("🆘 Alerte envoyée à tout le réseau" + (if (sent > 0) " et par SMS à $sent numéro(s)" else "") +
-                (if (loc == null) " (position inconnue)" else ""))
+                (if (loc == null) " (position inconnue)" else "") + ". Elle s'arrêtera seule dans 2 h, ou quand vous l'annulez.")
             done(true)
         }
     }
 
+    /** Annule mon alerte : tous les téléphones arrêtent la sirène. Fonctionne aussi après un redémarrage. */
     fun cancel(c: Context) {
         val id = myActive
         if (id == 0L) return
-        Courier.create(Envelope.SOS_CANCEL, "*", "", pack { writeLong(id); putStr(Hub.myName()) }, 2)
+        val cid = Courier.newId()
+        Courier.create(Envelope.SOS_CANCEL, "*", "", Identity.signedPack(pack { writeLong(id); putStr(Hub.myName()) }, ctx(cid)), 1, cid, ttlMs = VALID_MS)
         myActive = 0L
         Hub.addSystem("✅ Alerte annulée : tout le monde est prévenu.")
     }
@@ -157,16 +181,36 @@ object Sos {
         } catch (_: Exception) { 0 }
     }
 
+    private fun acked(id: Long): Boolean = Prefs.raw(Hub.app).getString("sos_acked", "")!!.split(',').contains(id.toString())
+    fun ack(id: Long) {
+        val sp = Prefs.raw(Hub.app)
+        val list = sp.getString("sos_acked", "")!!.split(',').filter { it.isNotEmpty() }.takeLast(50) + id.toString()
+        sp.edit().putString("sos_acked", list.joinToString(",")).apply()
+    }
+
+    private val lastRingFrom = HashMap<String, Long>()
+
     fun onAlert(env: Envelope) {
-        val d = DataInputStream(ByteArrayInputStream(env.payload))
+        // Une alerte non signée, ou signée par un autre que l'expéditeur annoncé, est une fausse alerte
+        val body = Identity.openSigned(env.payload, ctx(env.id), env.origin)?.first ?: return
+        val d = DataInputStream(ByteArrayInputStream(body))
+        val known = Contacts.byId(env.origin) != null
         val a = Alert(env.id, env.origin, env.originCode, d.getStr(), d.getStr(), d.getStr(), d.readDouble(), d.readDouble(),
-            d.readFloat(), d.readLong())
+            d.readFloat(), d.readLong(), known)
         val numbers = d.getStr()
+        val now = System.currentTimeMillis()
+        if (now - a.time > VALID_MS || a.time - now > 10 * 60_000) return          // trop vieille (ou date absurde)
         Hub.main.post {
             if (alerts.any { it.id == a.id }) return@post
             alerts.add(0, a)
-            Hub.addSystem("🆘 ALERTE de ${a.name} : ${a.type}")
-            HubService.instance?.onSos(a)
+            Hub.addSystem("🆘 ALERTE de ${a.name} : ${a.type}" + if (!a.known) " (personne inconnue)" else "")
+            val c = Hub.app
+            val m = mode(c)
+            val loud = !acked(a.id) && now - a.time < RING_MAX_AGE &&
+                (m == MODE_ALL || (m == MODE_CONTACTS && a.known)) &&
+                now - (lastRingFrom[a.origin] ?: 0L) > 10 * 60_000                   // pas plus d'une sirène / 10 min / personne
+            if (loud) lastRingFrom[a.origin] = now
+            HubService.instance?.onSos(a, loud)
         }
         // Un pont SMS relaie l'alerte vers les numéros d'urgence de la personne
         val c = Hub.app
@@ -175,10 +219,15 @@ object Sos {
     }
 
     fun onCancel(env: Envelope) {
-        val d = DataInputStream(ByteArrayInputStream(env.payload))
+        val body = Identity.openSigned(env.payload, ctx(env.id), env.origin)?.first ?: return
+        val d = DataInputStream(ByteArrayInputStream(body))
         val ref = d.readLong(); val name = d.getStr()
         Hub.main.post {
-            alerts.firstOrNull { it.id == ref }?.cancelled = true
+            val a = alerts.firstOrNull { it.id == ref }
+            // Seul l'auteur de l'alerte peut l'annuler
+            if (a != null && a.origin != env.origin) return@post
+            a?.cancelled = true
+            ack(ref)
             Hub.addSystem("✅ $name a annulé son alerte.")
             HubService.instance?.onSosCancelled(ref)
         }
@@ -186,16 +235,18 @@ object Sos {
 
     fun reply(a: Alert, text: String) {
         val pub = Contacts.byId(a.origin)?.pubKey()
-        val inner = pack { writeLong(a.id); putStr(Hub.myName()); putStr(text) }
         val id = Courier.newId()
-        val payload = if (pub != null) Identity.seal(pub, inner, java.nio.ByteBuffer.allocate(8).putLong(id).array()) else inner
-        Courier.create(Envelope.SOS_REPLY, a.origin, a.originCode, pack { writeBoolean(pub != null); putBytes(payload) }, 2, id)
+        val ctx = java.nio.ByteBuffer.allocate(8).putLong(id).array()
+        val inner = Identity.signedPack(pack { writeLong(a.id); putStr(Hub.myName()); putStr(text) }, ctx)
+        val payload = if (pub != null) Identity.seal(pub, inner, ctx) else inner
+        Courier.create(Envelope.SOS_REPLY, a.origin, a.originCode, pack { writeBoolean(pub != null); putBytes(payload) }, 1, id)
     }
 
     fun onReply(env: Envelope) {
         val d = DataInputStream(ByteArrayInputStream(env.payload))
         val sealed = d.readBoolean(); val body = d.getBytes()
-        val inner = if (sealed) Identity.open(body, env.idBytes) ?: return else body
+        val signed = if (sealed) Identity.open(body, env.idBytes) ?: return else body
+        val inner = Identity.openSigned(signed, env.idBytes, env.origin)?.first ?: return
         val r = DataInputStream(ByteArrayInputStream(inner))
         r.readLong(); val who = r.getStr(); val text = r.getStr()
         Hub.addSystem("🏃 $who : $text")
@@ -250,7 +301,9 @@ object Geo {
             if (loc == null) { done("Position introuvable : activez la localisation (GPS) et réessayez."); return@current }
             val inner = pack { putStr(Hub.myName()); writeDouble(loc.latitude); writeDouble(loc.longitude); writeInt(radius); putStr(text) }
             val id = Courier.newId()
-            val payload = if (pub != null) Identity.seal(pub, inner, java.nio.ByteBuffer.allocate(8).putLong(id).array()) else inner
+            val ctx = java.nio.ByteBuffer.allocate(8).putLong(id).array()
+            val signed = Identity.signedPack(inner, ctx)
+            val payload = if (pub != null) Identity.seal(pub, signed, ctx) else signed
             Courier.create(Envelope.GEO, to?.id ?: "*", to?.code ?: "", payload, 30, id)
             synchronized(drops) {
                 drops.add(Drop(id, Hub.myId, Hub.myCode(), Hub.myName(), to?.name ?: "tout le monde", loc.latitude, loc.longitude,
@@ -336,7 +389,8 @@ object SmsBridge {
         val pub = bridge.pubKey() ?: return false
         val id = Courier.newId()
         val inner = pack { putStr(number); putStr(text); putStr(Hub.myName()); putBytes(Identity.publicKey) }
-        Courier.create(Envelope.SMS_REQ, bridge.id, bridge.code, Identity.seal(pub, inner, java.nio.ByteBuffer.allocate(8).putLong(id).array()), 3, id)
+        val ctx = java.nio.ByteBuffer.allocate(8).putLong(id).array()
+        Courier.create(Envelope.SMS_REQ, bridge.id, bridge.code, Identity.seal(pub, Identity.signedPack(inner, ctx), ctx), 3, id)
         Prefs.setLastBridge(c, bridge.id)
         Hub.addSmsOutgoing(id, number, text, bridge.name)
         return true
@@ -390,7 +444,8 @@ object SmsBridge {
         val pub = pubIn ?: ct?.pubKey() ?: return
         val id = Courier.newId()
         val inner = pack { writeByte(kind); writeLong(ref); putStr(number); putStr(text); putStr(Hub.myName()) }
-        Courier.create(Envelope.SMS_RES, toId, code.ifEmpty { ct?.code ?: "" }, Identity.seal(pub, inner, java.nio.ByteBuffer.allocate(8).putLong(id).array()), 3, id)
+        val ctx = java.nio.ByteBuffer.allocate(8).putLong(id).array()
+        Courier.create(Envelope.SMS_RES, toId, code.ifEmpty { ct?.code ?: "" }, Identity.seal(pub, Identity.signedPack(inner, ctx), ctx), 3, id)
     }
 
     /** Côté demandeur : résultat d'envoi ou réponse SMS. */

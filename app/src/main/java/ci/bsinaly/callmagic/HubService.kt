@@ -32,6 +32,7 @@ class HubService : Service(), Hub.Events {
         const val ACTION_REPLY = "bscm.REPLY"
         const val ACTION_REJECT = "bscm.REJECT"
         const val ACTION_REFRESH = "bscm.REFRESH"
+        const val ACTION_SOS_SILENCE = "bscm.SOS_SILENCE"
         const val KEY_REPLY = "reply"
         const val EXTRA_CONV = "conv"
         private const val CH_SERVICE = "bscm_service"
@@ -99,6 +100,11 @@ class HubService : Service(), Hub.Events {
                 cancelMessageNotification(conv)
             }
             ACTION_REJECT -> Hub.reject()
+            ACTION_SOS_SILENCE -> {
+                SosAlarm.stop()
+                for (a in Sos.alerts) Sos.ack(a.id)
+                try { nm.cancel(N_SOS) } catch (_: Exception) {}
+            }
             else -> { goForeground(); Hub.startBtServer(); startLocation() }
         }
         applyBubble()
@@ -246,6 +252,14 @@ class HubService : Service(), Hub.Events {
     @Suppress("DEPRECATION")
     private fun notifyMessage(m: Msg) {
         val conv = m.conv
+        if (Lock.isLocked(this)) {
+            // Application verrouillée : aucune information sur l'écran de verrouillage ni dans la notification
+            val n = builder(CH_MSG).setSmallIcon(R.drawable.ic_stat).setContentTitle("BS CALLMagic")
+                .setContentText("🔒 Nouveau message").setAutoCancel(true)
+                .setContentIntent(activityPi(3 + conv.hashCode(), Intent(this, ChatActivity::class.java).putExtra(ChatActivity.EXTRA_TARGET, conv)))
+            try { nm.notify(conv, N_MSG, n.build()) } catch (_: Exception) {}
+            return
+        }
         val b = builder(CH_MSG)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle((if (conv.isEmpty()) "Salon · " else "🔒 ") + m.origin.ifBlank { "BS CALLMagic" })
@@ -341,19 +355,27 @@ class HubService : Service(), Hub.Events {
 
     // ------------------------------------------------------------------ SOS et notifications simples
 
-    fun onSos(a: Sos.Alert) {
+    /**
+     * Alerte reçue. [loud] : sirène (40 s maximum, arrêtable depuis la notification, l'écran ou la bulle) ;
+     * sinon simple notification. Une alerte arrêtée ne sonne plus jamais.
+     */
+    fun onSos(a: Sos.Alert, loud: Boolean) {
         val open = activityPi(40 + (a.id and 0xffff).toInt(), Intent(this, SosActivity::class.java))
         val b = builder(CH_SOS)
             .setSmallIcon(R.drawable.ic_stat)
-            .setContentTitle("🆘 ALERTE — ${a.name}")
+            .setContentTitle("🆘 ALERTE — ${a.name}" + if (!a.known) " (inconnu)" else "")
             .setContentText("${a.type}${if (a.note.isNotBlank()) " — " + a.note else ""}")
             .setCategory(Notification.CATEGORY_ALARM)
             .setContentIntent(open)
-            .setFullScreenIntent(open, true)
             .setAutoCancel(true)
-        if (Build.VERSION.SDK_INT < 26) legacyAlert(b, Notification.PRIORITY_MAX, false)
+            .addAction(Notification.Action.Builder(0, "🔕 Arrêter la sirène", servicePi(41, ACTION_SOS_SILENCE)).build())
+        if (loud) b.setFullScreenIntent(open, true)
+        if (Build.VERSION.SDK_INT < 26) legacyAlert(b, Notification.PRIORITY_MAX, !loud)
         try { nm.notify(N_SOS, b.build()) } catch (_: Exception) {}
-        try { startActivity(Intent(this, SosActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+        if (loud) {
+            SosAlarm.start(this, a.id)
+            try { startActivity(Intent(this, SosActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+        }
         overlay?.refresh()
     }
 

@@ -55,7 +55,8 @@
     </queries>
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
         android:icon="@drawable/ic_launcher"
         android:label="BS CALLMagic"
         android:requestLegacyExternalStorage="true"
@@ -111,6 +112,12 @@
             android:foregroundServiceType="connectedDevice|microphone|location" />
 
 
+        <activity
+            android:name=".LockActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait" />
         <activity android:name=".PostActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".SmsActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".GeoActivity" android:exported="false" android:screenOrientation="portrait" />

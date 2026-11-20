@@ -163,8 +163,8 @@ class SimpleActivity : BaseActivity() {
     @SuppressLint("ClickableViewAccessibility")
     private fun sosButton(): View {
         val b = Button(this).apply {
-            text = "🆘"; textSize = 44f
-            background = Ui.rounded(Ui.RED, Ui.dp(this@SimpleActivity, 24).toFloat())
+            text = if (Sos.myActive != 0L) "🆘 ✋" else "🆘"; textSize = 44f
+            background = Ui.rounded(if (Sos.myActive != 0L) 0xFF8B0000.toInt() else Ui.RED, Ui.dp(this@SimpleActivity, 24).toFloat())
             stateListAnimator = null
         }
         var armed: Runnable? = null
@@ -173,7 +173,10 @@ class SimpleActivity : BaseActivity() {
                 MotionEvent.ACTION_DOWN -> {
                     Interphone.speak("Gardez le doigt pour appeler à l'aide.")
                     armed = Runnable {
-                        Sos.send(this, "🆘 Autre urgence", "") { Interphone.speak("Alerte envoyée. Les secours arrivent.") }
+                        if (Sos.myActive != 0L) { Sos.cancel(this); Interphone.speak("Alerte arrêtée."); showGrid() }
+                        else Sos.send(this, "🆘 Autre urgence", "") {
+                            Interphone.speak("Alerte envoyée. Pour l'arrêter, gardez encore le doigt sur le bouton rouge."); showGrid()
+                        }
                     }.also { handler.postDelayed(it, 3000) }
                     true
                 }

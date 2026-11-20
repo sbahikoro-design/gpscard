@@ -21,10 +21,18 @@ import java.util.Locale
 object SosAlarm {
     private var ring: Ringtone? = null
     private var oldVol = -1
+    private val h = android.os.Handler(android.os.Looper.getMainLooper())
+    private val autoStop = Runnable { stop() }
+    @Volatile var playing = false
+        private set
 
+    /** Sirène limitée à 40 secondes : on prévient, on n'assourdit pas. */
     @Suppress("DEPRECATION")
-    fun start(c: Context) {
-        if (ring?.isPlaying == true) return
+    fun start(c: Context, alertId: Long) {
+        if (playing) return
+        playing = true
+        Sos.ack(alertId)                      // ne sonnera plus jamais pour cette alerte
+        h.removeCallbacks(autoStop); h.postDelayed(autoStop, 40_000)
         try {
             val am = c.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             oldVol = am.getStreamVolume(AudioManager.STREAM_ALARM)
@@ -39,11 +47,13 @@ object SosAlarm {
                 play()
             }
         } catch (_: Exception) {}
-        try { (c.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)?.vibrate(longArrayOf(0, 600, 300, 600, 300, 1200), 0) } catch (_: Exception) {}
+        try { (c.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)?.vibrate(longArrayOf(0, 600, 400, 600, 400, 600), 0) } catch (_: Exception) {}
         Interphone.stopAll()
     }
 
     fun stop() {
+        h.removeCallbacks(autoStop)
+        playing = false
         try { ring?.stop() } catch (_: Exception) {}
         ring = null
         val c = Hub.app
@@ -57,6 +67,7 @@ object SosAlarm {
 
 /** Écran rouge des alertes reçues : qui, quoi, où (distance et direction), répondre. */
 class SosActivity : BaseActivity() {
+    override val lockExempt = true
 
     private lateinit var list: LinearLayout
     private val observer: () -> Unit = { render() }
@@ -71,11 +82,25 @@ class SosActivity : BaseActivity() {
         val root = Ui.screen(this)
         (root.parent as? android.view.View)?.setBackgroundColor(0xFF3A0A0A.toInt())
         root.addView(Ui.title(this, "🆘 ALERTES"))
-        root.addView(Ui.text(this, "Ces alertes ont voyagé de téléphone en téléphone jusqu'à vous.", 13f, Ui.TEXT))
-        root.addView(Ui.button(this, "🔕  Arrêter la sirène", Ui.GREY) { SosAlarm.stop() }, Ui.lp(this, top = 14))
+        root.addView(Ui.text(this, "Ces alertes ont voyagé de téléphone en téléphone jusqu'à vous. Chaque alerte est signée : une fausse alerte est rejetée.", 13f, Ui.TEXT))
+        stopBtn = Ui.button(this, "🔕  ARRÊTER LA SIRÈNE", Ui.RED) {
+            SosAlarm.stop(); for (a in Sos.alerts) Sos.ack(a.id); render()
+        }.apply { textSize = 20f; minHeight = Ui.dp(this@SosActivity, 72) }
+        root.addView(stopBtn, Ui.lp(this, top = 14))
+        modeBtn = Ui.button(this, "", Ui.GREY) { chooseMode() }
+        root.addView(modeBtn, Ui.lp(this, top = 10))
         list = Ui.vertical(this)
         root.addView(list)
-        if (Sos.alerts.any { !it.cancelled && System.currentTimeMillis() - it.time < 3600_000 }) SosAlarm.start(this)
+    }
+
+    private lateinit var stopBtn: android.widget.Button
+    private lateinit var modeBtn: android.widget.Button
+
+    private fun chooseMode() {
+        val labels = arrayOf("🔊 Sirène pour toutes les alertes", "🔊 Sirène seulement pour mes contacts (conseillé)", "🔔 Simple notification, jamais de sirène")
+        AlertDialog.Builder(this).setTitle("Quand une alerte arrive…")
+            .setSingleChoiceItems(labels, Sos.mode(this)) { d, i -> Sos.setMode(this, i); d.dismiss(); render() }
+            .setNegativeButton("Fermer", null).show()
     }
 
     override fun onResume() {
@@ -91,6 +116,12 @@ class SosActivity : BaseActivity() {
     }
 
     private fun render() {
+        Ui.show(stopBtn, SosAlarm.playing)
+        modeBtn.text = "Réception : " + when (Sos.mode(this)) {
+            Sos.MODE_ALL -> "sirène pour toutes les alertes"
+            Sos.MODE_QUIET -> "notification simple"
+            else -> "sirène pour mes contacts seulement"
+        } + "  ›"
         list.removeAllViews()
         if (Sos.alerts.isEmpty()) {
             list.addView(Ui.text(this, "Aucune alerte reçue.", 15f, Ui.MUTED), Ui.lp(this, top = 16)); return
@@ -98,7 +129,7 @@ class SosActivity : BaseActivity() {
         val here = Loc.last
         for (a in Sos.alerts) {
             val card = Ui.card(this).apply { background = Ui.rounded(if (a.cancelled) Ui.CARD else 0xFF5C1010.toInt(), Ui.dp(this@SosActivity, 14).toFloat(), 3, Ui.RED) }
-            card.addView(Ui.text(this, (if (a.cancelled) "✅ Annulée — " else "") + a.name, 22f, Ui.TEXT, true))
+            card.addView(Ui.text(this, (if (a.cancelled) "✅ Annulée — " else "") + a.name + (if (a.known) "  ✔ contact" else "  · inconnu"), 22f, Ui.TEXT, true))
             card.addView(Ui.text(this, a.type + (if (a.note.isNotBlank()) "\n« ${a.note} »" else ""), 18f, Ui.GOLD, true), Ui.lp(this, top = 4))
             card.addView(Ui.text(this, "Envoyée à " + SimpleDateFormat("HH:mm", Locale.FRANCE).format(Date(a.time)), 13f, Ui.MUTED), Ui.lp(this, top = 4))
             val hasPos = !a.lat.isNaN()
@@ -136,6 +167,12 @@ class SosActivity : BaseActivity() {
     override fun onDestroy() {
         super.onDestroy()
         SosAlarm.stop()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        SosAlarm.stop()
+        super.onBackPressed()
     }
 
     @Suppress("unused")

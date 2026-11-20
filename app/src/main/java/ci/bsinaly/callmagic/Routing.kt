@@ -14,14 +14,14 @@ import java.util.concurrent.ConcurrentHashMap
 object Routing {
     const val MAX_HOPS = 6
 
-    class Route(val next: Peer, val hops: Int, val name: String, @Volatile var at: Long)
+    class Route(val next: Peer, val hops: Int, val name: String, @Volatile var at: Long, val pub: ByteArray?)
 
     private val table = ConcurrentHashMap<String, Route>()
     private val virtuals = ConcurrentHashMap<String, VirtualPeer>()
 
     /** Correspondant joint par la chaîne : se comporte comme une liaison ordinaire pour le reste de l'appli. */
-    class VirtualPeer(id: String, name: String) : Peer(Proto.CHAIN, id, true, EmptyIn, NullOut, {}) {
-        init { deviceId = id; this.name = name }
+    class VirtualPeer(id: String, name: String, key: ByteArray?) : Peer(Proto.CHAIN, id, true, EmptyIn, NullOut, {}) {
+        init { deviceId = id; this.name = name; pubKey = key }
         override fun send(type: Int, p: ByteArray, off: Int, len: Int): Boolean =
             alive && sendRouted(deviceId, type, p, off, len)
     }
@@ -30,14 +30,16 @@ object Routing {
     private object NullOut : OutputStream() { override fun write(b: Int) {} }
 
     /** Liste « qui je peux joindre » envoyée régulièrement aux voisins directs. */
+    private class Entry(val id: String, val name: String, val hops: Int, val pub: ByteArray)
+
     fun advert(to: Peer? = null): ByteArray {
         val direct = Hub.readyPeers().filter { it.transport != Proto.CHAIN }.distinctBy { it.deviceId }
-        val entries = ArrayList<Triple<String, String, Int>>()
-        for (p in direct) if (p !== to && p.deviceId != to?.deviceId) entries.add(Triple(p.deviceId, p.name, 1))
+        val entries = ArrayList<Entry>()
+        for (p in direct) { val k = p.pubKey; if (k != null && p !== to && p.deviceId != to?.deviceId) entries.add(Entry(p.deviceId, p.name, 1, k)) }
         val now = System.currentTimeMillis()
-        for ((id, r) in table) if (now - r.at < 30_000 && r.hops < MAX_HOPS && r.next !== to && id != to?.deviceId && direct.none { it.deviceId == id })
-            entries.add(Triple(id, r.name, r.hops + 1))
-        return pack { writeInt(entries.size); for ((id, n, h) in entries) { putStr(id); putStr(n); writeByte(h) } }
+        for ((id, r) in table) if (r.pub != null && now - r.at < 30_000 && r.hops < MAX_HOPS && r.next !== to && id != to?.deviceId && direct.none { it.deviceId == id })
+            entries.add(Entry(id, r.name, r.hops + 1, r.pub))
+        return pack { writeInt(entries.size); for (e in entries) { putStr(e.id); putStr(e.name); writeByte(e.hops); putBytes(e.pub) } }
     }
 
     fun onAdvert(p: Peer, b: ByteArray) {
@@ -46,15 +48,16 @@ object Routing {
         val seen = HashSet<String>()
         val now = System.currentTimeMillis()
         repeat(n) {
-            val id = d.getStr(); val name = d.getStr(); val h = d.readUnsignedByte()
+            val id = d.getStr(); val name = d.getStr(); val h = d.readUnsignedByte(); val pk = d.getBytes(1000)
             if (id == Hub.myId || id.isEmpty()) return@repeat
+            if (Identity.idOf(pk) != id) return@repeat                           // clé qui ne correspond pas : ignorée
             seen.add(id)
             if (Hub.peers.any { it.alive && it.deviceId == id }) return@repeat   // déjà joignable en direct
             val hops = h + 1
             if (hops > MAX_HOPS) return@repeat
             val cur = table[id]
             if (cur == null || cur.next === p || hops < cur.hops || now - cur.at > 30_000 || !cur.next.alive)
-                table[id] = Route(p, hops, name, now)
+                table[id] = Route(p, hops, name, now, pk)
         }
         // Les routes que ce voisin n'annonce plus disparaissent
         table.entries.removeAll { it.value.next === p && it.key !in seen }
@@ -84,16 +87,29 @@ object Routing {
     fun virtualFor(id: String, name: String? = null): VirtualPeer? {
         if (id.isEmpty() || route(id) == null) return null
         virtuals[id]?.let { if (it.alive) return it }
-        val v = VirtualPeer(id, name ?: route(id)?.name ?: Contacts.nameFor(id))
+        val v = VirtualPeer(id, name ?: route(id)?.name ?: Contacts.nameFor(id), keyOf(id))
         virtuals[id] = v
         return v
     }
 
     // ------------------------------------------------------------------ acheminement
 
+    private fun keyOf(id: String): ByteArray? = Contacts.byId(id)?.pubKey() ?: table[id]?.pub
+
+    private val rnd = java.security.SecureRandom()
+
+    private fun aad(src: String, dest: String, type: Int) = (src + "|" + dest + "|" + type).toByteArray()
+
+    /** Chiffré de bout en bout : les téléphones relais transportent sans pouvoir lire ni modifier. */
     fun sendRouted(dest: String, type: Int, p: ByteArray, off: Int = 0, len: Int = p.size): Boolean {
         val nh = route(dest)?.next ?: return false
-        val frame = pack { putStr(dest); putStr(Hub.myId); writeByte(MAX_HOPS + 2); writeByte(type); write(p, off, len) }
+        val pk = keyOf(dest) ?: return false
+        val nonce = ByteArray(12).also { rnd.nextBytes(it) }
+        val c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(javax.crypto.Cipher.ENCRYPT_MODE, Identity.sharedKey(pk, "chain"), javax.crypto.spec.GCMParameterSpec(128, nonce))
+        c.updateAAD(aad(Hub.myId, dest, type))
+        val ct = c.doFinal(p, off, len)
+        val frame = pack { putStr(dest); putStr(Hub.myId); writeByte(MAX_HOPS + 2); writeByte(type); write(nonce); write(ct) }
         return nh.send(Proto.ROUTED, frame)
     }
 
@@ -103,10 +119,19 @@ object Routing {
         val ttlPos = 8 + dest.toByteArray().size + src.toByteArray().size
         val ttl = d.readUnsignedByte(); val type = d.readUnsignedByte()
         if (dest == Hub.myId) {
-            val payload = b.copyOfRange(ttlPos + 2, b.size)
+            if (route(src) == null && Hub.peers.none { it.alive && it.deviceId == src }) { /* route de retour apprise ci-dessous */ }
+            val pk = keyOf(src) ?: return
+            if (b.size < ttlPos + 2 + 12 + 16) return
+            val nonce = b.copyOfRange(ttlPos + 2, ttlPos + 14)
+            val payload = try {
+                val c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                c.init(javax.crypto.Cipher.DECRYPT_MODE, Identity.sharedKey(pk, "chain"), javax.crypto.spec.GCMParameterSpec(128, nonce))
+                c.updateAAD(aad(src, dest, type))
+                c.doFinal(b, ttlPos + 14, b.size - ttlPos - 14)
+            } catch (e: Exception) { return }                                    // falsifié ou mauvais expéditeur
             // Le correspondant lointain devient une liaison virtuelle : tout le reste fonctionne pareil
             val v = virtuals[src]?.takeIf { it.alive } ?: run {
-                if (route(src) == null) table[src] = Route(from, Routing.MAX_HOPS, Contacts.nameFor(src), System.currentTimeMillis())
+                if (route(src) == null) table[src] = Route(from, Routing.MAX_HOPS, Contacts.nameFor(src), System.currentTimeMillis(), pk)
                 virtualFor(src) ?: return
             }
             Hub.onFrame(v, type, payload)

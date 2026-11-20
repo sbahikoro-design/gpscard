@@ -111,6 +111,7 @@ object Interphone : TextToSpeech.OnInitListener {
     /** Annonce d'un message reçu, si le mode interphone est actif. */
     fun announce(ctx: Context, m: Msg) {
         if (!Prefs.interphone(ctx) || Hub.call != Hub.Call.IDLE || VoiceRecorder.recording) return
+        if (Lock.isLocked(ctx) && !Prefs.simpleMode(ctx)) { speak("Nouveau message."); return }
         val priv = m.to.isNotEmpty()
         when (m.kind) {
             Msg.K_TEXT -> speak(if (priv) "Message privé de ${m.origin} : ${m.text}" else "${m.origin} dit : ${m.text}")

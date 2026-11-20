@@ -195,7 +195,7 @@ class Overlay(private val svc: Service) {
         if (!shown) return
         refresh()
         if (panel.visibility == View.VISIBLE) return
-        snippet.text = (if (m.to.isNotEmpty()) "🔒 " else "") + "${m.origin} : ${m.summary()}"
+        snippet.text = if (Lock.isLocked(svc)) "🔒 Nouveau message" else (if (m.to.isNotEmpty()) "🔒 " else "") + "${m.origin} : ${m.summary()}"
         Ui.show(snippet, true)
         h.removeCallbacksAndMessages(null)
         h.postDelayed({ if (shown) Ui.show(snippet, false) }, 6000)
@@ -226,6 +226,7 @@ class Overlay(private val svc: Service) {
         }
         inter.text = if (Prefs.interphone(svc)) "🔊 Interphone" else "🔇 Interphone"
         lines.removeAllViews()
+        if (Lock.isLocked(svc)) { lines.addView(Ui.text(ctx, "🔒 Ouvrez BS CALLMagic pour lire vos messages.", 12f, Ui.MUTED)); return }
         val last = Hub.history.filter { it.kind != Msg.K_SYS }.takeLast(4)
         if (last.isEmpty()) lines.addView(Ui.text(ctx, "Aucun message pour l'instant.", 12f, Ui.MUTED))
         for (m in last) {

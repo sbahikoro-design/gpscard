@@ -16,7 +16,7 @@ import android.widget.TextView
 
 /** Mode Bluetooth : appareils associés ou à proximité ; le service attend aussi les connexions entrantes. */
 @SuppressLint("MissingPermission")
-class BluetoothActivity : Activity() {
+class BluetoothActivity : BaseActivity() {
 
     companion object {
         private const val REQ_PERMS = 1

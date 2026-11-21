@@ -27,6 +27,11 @@
  *     · definirMotDePasse  — fixer soi-même le mot de passe d'un compte ;
  *     · detailActivite     — la liste des événements derrière chaque indicateur ;
  *     · comptage distinct des cartes éditées et des cartes imprimées.
+ *
+ * Version 3
+ *     · colonnes « fonction » et « matricule » sur chaque compte ;
+ *     · création, modification et suppression des comptes réservées au seul
+ *       compte administrateur.
  */
 
 var CLASSEUR = 'ANADER GPS CARD — comptes et activité';
@@ -51,7 +56,7 @@ function doPost(e) {
 
 function doGet() {
   return ContentService.createTextOutput(JSON.stringify(
-    { ok: true, service: 'ANADER GPS CARD', version: 2 }))
+    { ok: true, service: 'ANADER GPS CARD', version: 3 }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -101,12 +106,14 @@ function feuille(nom, entetes) {
 function fComptes() {
   var f = feuille('Comptes', ['login', 'nom', 'empreinte', 'sel', 'niveau', 'id',
     'libelle', 'role', 'peutCreer', 'mail', 'createur', 'cree', 'premiere',
-    'derniere', 'actif', 'ids', 'provisoire']);
+    'derniere', 'actif', 'ids', 'provisoire', 'fonction', 'matricule']);
   /* colonnes ajoutées après coup : « ids » (un compte de CADR peut couvrir
      plusieurs emprises) et « provisoire » (mot de passe délivré par
      l'administration, effacé dès que l'agent choisit le sien). */
   colonne(f, 'ids');
   colonne(f, 'provisoire');
+  colonne(f, 'fonction');
+  colonne(f, 'matricule');
   return f;
 }
 
@@ -276,14 +283,14 @@ function changerMotDePasse(d) {
 
 /* --------------------------------------------- délégation hiérarchique */
 
-/** Un compte ne crée que dans sa propre portée et à un niveau inférieur au sien. */
+/** Les comptes relèvent du seul administrateur : la délégation est fermée. */
+function seulAdmin(c) {
+  if (c.role !== 'admin')
+    throw new Error('La gestion des comptes est réservée à l’administrateur');
+  return c;
+}
 function verifierDelegation(createur, niveau, id) {
-  if (createur.role !== 'admin') {
-    if (!(createur.peutCreer === true || createur.peutCreer === 'VRAI'))
-      throw new Error('Votre compte n’est pas autorisé à créer des accès');
-    if (NIVEAUX[niveau] === undefined || NIVEAUX[niveau] <= NIVEAUX[createur.niveau])
-      throw new Error('Vous ne pouvez créer que des comptes d’un niveau inférieur au vôtre');
-  }
+  seulAdmin(createur);
   if (NIVEAUX[niveau] === undefined) throw new Error('Niveau inconnu');
 }
 
@@ -299,25 +306,26 @@ function creerCompte(d) {
   var mdp = motDePasseProvisoire(), sel = nouveauSel();
   var f = fComptes();
   f.appendRow([login, d.nom, empreinte(mdp, sel), sel, d.niveau,
-    ids[0], d.libelle || '', 'agent', d.peutCreer === true, '',
+    ids[0], d.libelle || '', 'agent', false, '',
     createur.login, new Date(), true, '', true, ids.join(',')]);
-  f.getRange(f.getLastRow(), colonne(f, 'provisoire')).setValue(mdp);
+  var L = f.getLastRow();
+  f.getRange(L, colonne(f, 'provisoire')).setValue(mdp);
+  f.getRange(L, colonne(f, 'fonction')).setValue(String(d.fonction || '').trim());
+  f.getRange(L, colonne(f, 'matricule')).setValue(String(d.matricule || '').trim());
   return { ok: true, motdepasse: mdp,
     compte: { login: login, nom: d.nom, niveau: d.niveau, id: Number(d.id) } };
 }
 
 function listerComptes(d) {
-  var c = compteDuJeton(d.jeton);
+  var c = seulAdmin(compteDuJeton(d.jeton));
   var t = lignes(fComptes()), out = [];
   for (var i = 0; i < t.length; i++) {
     var x = t[i];
-    if (c.role !== 'admin') {
-      if (x.createur !== c.login && x.login !== c.login) continue;
-    }
     var idsx = String(x.ids || '').split(',').map(Number)
       .filter(function (v) { return !isNaN(v); });
     if (!idsx.length && x.id !== '' && x.id !== null) idsx = [Number(x.id)];
     out.push({ nom: x.nom, login: x.login, portee: portee(x), mail: x.mail,
+      fonction: x.fonction || '', matricule: x.matricule || '',
       soi: x.login === c.login, role: x.role,
       niveau: x.niveau, id: Number(x.id), ids: idsx, libelle: x.libelle,
       peutCreer: x.peutCreer === true || x.peutCreer === 'VRAI' || x.role === 'admin',
@@ -332,11 +340,9 @@ function listerComptes(d) {
 }
 
 function reinitialiser(d) {
-  var c = compteDuJeton(d.jeton);
+  var c = seulAdmin(compteDuJeton(d.jeton));
   var cible = compteDe(d.login);
   if (!cible) throw new Error('Compte introuvable');
-  if (c.role !== 'admin' && cible.createur !== c.login)
-    throw new Error('Ce compte ne relève pas de votre portée');
   var mdp = motDePasseProvisoire(), sel = nouveauSel(), f = fComptes();
   f.getRange(cible._ligne, 3).setValue(empreinte(mdp, sel));
   f.getRange(cible._ligne, 4).setValue(sel);
@@ -352,12 +358,19 @@ function reinitialiser(d) {
  * le compte à son historique d'activité.
  */
 function modifierCompte(d) {
-  var c = compteDuJeton(d.jeton);
+  var c = seulAdmin(compteDuJeton(d.jeton));
   var cible = compteDe(d.login);
   if (!cible) throw new Error('Compte introuvable');
-  if (c.role !== 'admin' && cible.createur !== c.login && cible.login !== c.login)
-    throw new Error('Ce compte ne relève pas de votre portée');
   var f = fComptes(), L = cible._ligne, fait = [];
+
+  if (d.fonction !== undefined) {
+    f.getRange(L, colonne(f, 'fonction')).setValue(String(d.fonction).trim());
+    fait.push('fonction');
+  }
+  if (d.matricule !== undefined) {
+    f.getRange(L, colonne(f, 'matricule')).setValue(String(d.matricule).trim());
+    fait.push('matricule');
+  }
 
   if (d.nom !== undefined) {
     var nom = String(d.nom).trim();
@@ -396,11 +409,9 @@ function modifierCompte(d) {
  * que l'intéressé n'en a pas choisi un autre.
  */
 function definirMotDePasse(d) {
-  var c = compteDuJeton(d.jeton);
+  var c = seulAdmin(compteDuJeton(d.jeton));
   var cible = compteDe(d.login);
   if (!cible) throw new Error('Compte introuvable');
-  if (c.role !== 'admin' && cible.createur !== c.login && cible.login !== c.login)
-    throw new Error('Ce compte ne relève pas de votre portée');
   var mdp = String(d.motdepasse || '');
   if (mdp.length < 8)
     throw new Error('Le mot de passe doit compter au moins 8 caractères');
@@ -421,14 +432,10 @@ function definirMotDePasse(d) {
  * sont fermées ; le journal d'activité est conservé.
  */
 function supprimerCompte(d) {
-  var c = compteDuJeton(d.jeton);
+  var c = seulAdmin(compteDuJeton(d.jeton));
   var cible = compteDe(d.login);
   if (!cible) throw new Error('Compte introuvable');
   if (cible.login === c.login) throw new Error('Vous ne pouvez pas supprimer votre propre compte');
-  if (c.role !== 'admin' && cible.createur !== c.login)
-    throw new Error('Ce compte ne relève pas de votre portée');
-  if (cible.role === 'admin' && c.role !== 'admin')
-    throw new Error('Un compte administrateur ne peut être supprimé que par un administrateur');
 
   var f = fComptes(), t = lignes(f), repris = 0;
   for (var i = 0; i < t.length; i++) {

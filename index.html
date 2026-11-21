@@ -382,7 +382,7 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
   letter-spacing:.03em;background:#FBF4DF;padding:1px 5px;border-radius:3px}
 #cpAide{font-size:11px;color:var(--txt2);margin-top:7px;line-height:1.45}
 /* la liste des comptes porte deux colonnes de plus : elle a besoin d'air */
-#modaleComptes .fenetre.large{width:min(920px,100%)}
+#modaleComptes .fenetre.large{width:min(1060px,100%)}
 .kpi{background:#F5F7F3;border-left:3px solid var(--or);padding:7px 9px}
 .kpi b{display:block;font-size:17px;color:var(--vert)}
 .kpi span{font-size:10.5px;color:var(--txt2)}
@@ -562,6 +562,11 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
             <input type="text" id="cpNom" maxlength="60"></div>
           <div><label class="champ" for="cpLogin">Identifiant</label>
             <input type="text" id="cpLogin" maxlength="40" placeholder="prenom.nom"></div>
+          <div><label class="champ" for="cpFonction">Fonction</label>
+            <input type="text" id="cpFonction" maxlength="80"
+                   placeholder="Chef Section Qualité, Chef de Zone…"></div>
+          <div><label class="champ" for="cpMatricule">Matricule</label>
+            <input type="text" id="cpMatricule" maxlength="20" placeholder="8267N"></div>
           <div><label class="champ" for="cpNiveau">Niveau attribué</label>
             <select id="cpNiveau"></select></div>
           <div><label class="champ" for="cpEntite" id="cpEntiteL">Entité attribuée</label>
@@ -586,8 +591,6 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
           </div>
           <div id="cpMulti"></div>
         </div>
-        <label class="coche"><input type="checkbox" id="cpDeleguer">
-          Autoriser ce compte à créer des comptes sous sa propre portée</label>
         <div class="rangee" style="margin-top:9px">
           <button class="btn" id="cpCreer">Créer le compte</button>
           <button class="btn sec" id="cpAnnuler" hidden>Annuler la modification</button>
@@ -595,8 +598,9 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
         <div id="cpEtat"></div>
         <div id="cpListe"></div>
         <p id="cpAide">Dans la liste, les cellules soulignées en pointillé se corrigent
-          d’un clic : nom, courriel et mot de passe. <b>Modifier</b> reprend le compte
-          dans les champs ci-dessus pour changer son centre de coût ou sa délégation.
+          d’un clic : nom, matricule, fonction, courriel et mot de passe.
+          <b>Modifier</b> reprend le compte dans les champs ci-dessus pour changer son
+          centre de coût.
           L’identifiant, lui, ne change pas : c’est la clé qui relie le compte à son
           historique d’activité.</p>
       </div>
@@ -759,7 +763,7 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
 
       <h4>7. Administration</h4>
       <p><b>Corriger un compte sans le refaire.</b> Dans la liste, les cellules soulignées en
-      pointillé — nom, courriel, mot de passe — se corrigent d’un clic : taper la nouvelle
+      pointillé — nom, matricule, fonction, courriel, mot de passe — se corrigent d’un clic : taper la nouvelle
       valeur, <i>Entrée</i> pour enregistrer, <i>Échap</i> pour renoncer. Rien d’autre n’est
       touché. Le bouton <b>Modifier</b> reprend le compte dans les champs du haut, pour changer
       son centre de coût ou son droit de déléguer ; <i>Annuler la modification</i> rend le
@@ -778,6 +782,15 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
 
       <h4>8. Comptes et mise en ligne</h4>
       <p>Hors connexion au service, l’application fonctionne en <b>mode local</b> : accès complet, aucune trace. Une fois l’adresse du service renseignée dans la fenêtre Administration, l’ouverture d’une session devient obligatoire.</p>
+      <p><b>Seul l’administrateur crée les comptes.</b> Le bouton <i>Comptes</i> n’apparaît
+      que pour lui ; aucun autre compte, quel que soit son niveau, ne peut créer, modifier,
+      réinitialiser ou supprimer un accès. Le serveur applique la même règle de son côté : une
+      requête venue d’ailleurs est refusée, même forgée à la main.</p>
+      <p>Chaque compte porte le <b>nom</b> de l’agent, sa <b>fonction</b>, son <b>matricule</b>
+      ANADER, son identifiant de connexion et son centre de coût. Fonction et matricule ne sont
+      pas obligatoires à la création, mais ce sont eux qui permettent de reconnaître un agent
+      dans la liste des années plus tard : mieux vaut les renseigner tout de suite. Ils se
+      corrigent ensuite d’un clic dans leur cellule, comme le nom et le courriel.</p>
       <p>Les niveaux attribuables suivent la hiérarchie : Direction Générale, Direction Régionale, zone ANADER, CADR. Aux trois premiers niveaux, l’entité est unique. Au niveau CADR, un agent pouvant en couvrir plusieurs, la sélection se fait par cases à cocher.</p>
       <p><b>Trouver un CADR parmi 998.</b> Trois listes en cascade — <b>Zone ANADER</b>, puis
       <b>département</b>, puis <b>sous-préfecture</b> — réduisent la liste de proche en proche :
@@ -3598,7 +3611,7 @@ function finConnexion(){
   $("#auEtape1").hidden=false; $("#auEtape2").hidden=true;
   $("#auValider").hidden=false; $("#auValider2").hidden=true;
   $("#auMdp").value=""; $("#auMdp1").value=""; $("#auMdp2").value="";
-  const a=$("#btnComptes"); if(a) a.hidden=!(COMPTE.role==="admin"||COMPTE.peutCreer);
+  const a=$("#btnComptes"); if(a) a.hidden=(COMPTE.role!=="admin");
   try{ definirPortee(COMPTE.niveau,COMPTE.id===undefined?-1:COMPTE.id,COMPTE.ids); }
   catch(err){ definirPortee("pays",-1); }
   journal("connexion",{});
@@ -3768,7 +3781,8 @@ async function creerCompte(){
     $("#cpCreer").disabled=true; $("#cpEtat").textContent="Enregistrement…";
     try{
       const r=await appelAPI("modifierCompte",{login:MODIF, nom:nom, niveau:k,
-        id:ids[0], ids:ids, libelle:libelle, peutCreer:$("#cpDeleguer").checked});
+        fonction:$("#cpFonction").value.trim(), matricule:$("#cpMatricule").value.trim(),
+        id:ids[0], ids:ids, libelle:libelle});
       const q=MODIF; quitterModif();
       $("#cpEtat").innerHTML='Compte <b>'+ech(q)+'</b> modifié — '+ech(r.modifie.join(", "))+'.';
       listerComptes();
@@ -3776,8 +3790,8 @@ async function creerCompte(){
     $("#cpCreer").disabled=false; return;
   }
   const charge={nom:$("#cpNom").value.trim(), login:$("#cpLogin").value.trim(),
-    niveau:k, id:ids[0], ids:ids, libelle:libelle,
-    peutCreer:$("#cpDeleguer").checked};
+    fonction:$("#cpFonction").value.trim(), matricule:$("#cpMatricule").value.trim(),
+    niveau:k, id:ids[0], ids:ids, libelle:libelle};
   if(!charge.nom||!charge.login){$("#cpEtat").textContent="Nom et identifiant sont requis.";return;}
   $("#cpCreer").disabled=true; $("#cpEtat").textContent="Création…";
   try{
@@ -3786,6 +3800,7 @@ async function creerCompte(){
       '</b> · mot de passe provisoire <b>'+d.motdepasse+'</b> — à transmettre à l’intéressé, '+
       'il le changera à sa première connexion.';
     $("#cpNom").value=""; $("#cpLogin").value="";
+    $("#cpFonction").value=""; $("#cpMatricule").value="";
     listerComptes();
   }catch(e){ $("#cpEtat").textContent=e.message; }
   $("#cpCreer").disabled=false;
@@ -3795,12 +3810,17 @@ async function listerComptes(){
   try{
     const d=await appelAPI("listerComptes");
     COMPTES=d.comptes||[];
-    $("#cpListe").innerHTML='<table class="tabComptes"><thead><tr><th>Nom</th><th>Identifiant</th>'+
+    $("#cpListe").innerHTML='<table class="tabComptes"><thead><tr><th>Nom</th>'+
+      '<th>Matricule</th><th>Fonction</th><th>Identifiant</th>'+
       '<th>Centre de coût</th><th>Courriel</th><th>Mot de passe</th>'+
       '<th>Dernière connexion</th><th></th></tr></thead><tbody>'+
       COMPTES.map(c=>'<tr'+(c.soi?' class="soi"':'')+' data-login="'+ech(c.login)+'">'+
         '<td class="mod" data-champ="nom" data-val="'+ech(c.nom)+'">'+ech(c.nom)+
           (c.soi?' <i>(vous)</i>':'')+'</td>'+
+        '<td class="mod" data-champ="matricule" data-val="'+ech(c.matricule||"")+'">'+
+          (c.matricule?ech(c.matricule):'<i>—</i>')+'</td>'+
+        '<td class="mod" data-champ="fonction" data-val="'+ech(c.fonction||"")+'">'+
+          (c.fonction?ech(c.fonction):'<i>non renseignée</i>')+'</td>'+
         '<td>'+ech(c.login)+'</td>'+
         '<td>'+ech(c.portee)+'</td>'+
         '<td class="mod" data-champ="mail" data-val="'+ech(c.mail||"")+'">'+
@@ -3870,6 +3890,7 @@ function modifierDepuisListe(login){
   MODIF=login;
   majFormulaireCompte();
   $("#cpNom").value=c.nom||"";
+  $("#cpFonction").value=c.fonction||""; $("#cpMatricule").value=c.matricule||"";
   $("#cpLogin").value=c.login; $("#cpLogin").disabled=true;
   if([...$("#cpNiveau").options].some(o=>o.value===c.niveau)) $("#cpNiveau").value=c.niveau;
   majEntites();
@@ -3879,7 +3900,6 @@ function modifierDepuisListe(login){
   } else if([...$("#cpEntite").options].some(o=>o.value===String(c.id))){
     $("#cpEntite").value=String(c.id);
   }
-  $("#cpDeleguer").checked=!!c.peutCreer;
   majBoutonCompte();
   $("#cpEtat").innerHTML='Modification du compte <b>'+ech(c.nom)+'</b> — corrigez les '+
     'champs ci-dessus, puis enregistrez.';
@@ -3889,7 +3909,7 @@ function modifierDepuisListe(login){
 function quitterModif(){
   MODIF=null;
   $("#cpLogin").disabled=false; $("#cpLogin").value=""; $("#cpNom").value="";
-  $("#cpDeleguer").checked=false;
+  $("#cpFonction").value=""; $("#cpMatricule").value="";
   CADR_SEL.clear();
   const q=$("#cpfQ"); if(q) q.value="";
   const z=$("#cpfZone"); if(z) z.value="";

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="a11y_desc">BS CLEAN utilise ce service uniquement pour appuyer à votre place sur « Vider le cache » dans les paramètres de chaque application sélectionnée. Il ne lit, ne collecte et n\'envoie aucune donnée. Il n\'appuie jamais sur « Vider le stockage ».</string>
+</resources>

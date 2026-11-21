@@ -591,6 +591,8 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
           </div>
           <div id="cpMulti"></div>
         </div>
+        <label class="coche"><input type="checkbox" id="cpDeleguer">
+          Autoriser ce compte à créer des comptes sous sa propre portée</label>
         <div class="rangee" style="margin-top:9px">
           <button class="btn" id="cpCreer">Créer le compte</button>
           <button class="btn sec" id="cpAnnuler" hidden>Annuler la modification</button>
@@ -600,7 +602,7 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
         <p id="cpAide">Dans la liste, les cellules soulignées en pointillé se corrigent
           d’un clic : nom, matricule, fonction, courriel et mot de passe.
           <b>Modifier</b> reprend le compte dans les champs ci-dessus pour changer son
-          centre de coût.
+          centre de coût ou sa délégation.
           L’identifiant, lui, ne change pas : c’est la clé qui relie le compte à son
           historique d’activité.</p>
       </div>
@@ -782,10 +784,12 @@ textarea#exCom.manque{border-color:#A8362A;background:#FBEDEA}
 
       <h4>8. Comptes et mise en ligne</h4>
       <p>Hors connexion au service, l’application fonctionne en <b>mode local</b> : accès complet, aucune trace. Une fois l’adresse du service renseignée dans la fenêtre Administration, l’ouverture d’une session devient obligatoire.</p>
-      <p><b>Seul l’administrateur crée les comptes.</b> Le bouton <i>Comptes</i> n’apparaît
-      que pour lui ; aucun autre compte, quel que soit son niveau, ne peut créer, modifier,
-      réinitialiser ou supprimer un accès. Le serveur applique la même règle de son côté : une
-      requête venue d’ailleurs est refusée, même forgée à la main.</p>
+      <p><b>Qui crée les comptes.</b> L’administrateur, et les comptes à qui il a donné ce
+      droit par la case <i>Autoriser ce compte à créer des comptes sous sa propre portée</i>.
+      Un responsable ainsi autorisé ne crée que <b>dans sa propre portée et à un niveau
+      inférieur au sien</b> : un chef de zone crée ses agents CADR, jamais l’inverse, et ne
+      voit dans la liste que les comptes qu’il a lui-même créés. Le serveur revérifie la même
+      règle : une requête forgée à la main est refusée.</p>
       <p>Chaque compte porte le <b>nom</b> de l’agent, sa <b>fonction</b>, son <b>matricule</b>
       ANADER, son identifiant de connexion et son centre de coût. Fonction et matricule ne sont
       pas obligatoires à la création, mais ce sont eux qui permettent de reconnaître un agent
@@ -3611,7 +3615,7 @@ function finConnexion(){
   $("#auEtape1").hidden=false; $("#auEtape2").hidden=true;
   $("#auValider").hidden=false; $("#auValider2").hidden=true;
   $("#auMdp").value=""; $("#auMdp1").value=""; $("#auMdp2").value="";
-  const a=$("#btnComptes"); if(a) a.hidden=(COMPTE.role!=="admin");
+  const a=$("#btnComptes"); if(a) a.hidden=!(COMPTE.role==="admin"||COMPTE.peutCreer);
   try{ definirPortee(COMPTE.niveau,COMPTE.id===undefined?-1:COMPTE.id,COMPTE.ids); }
   catch(err){ definirPortee("pays",-1); }
   journal("connexion",{});
@@ -3782,7 +3786,7 @@ async function creerCompte(){
     try{
       const r=await appelAPI("modifierCompte",{login:MODIF, nom:nom, niveau:k,
         fonction:$("#cpFonction").value.trim(), matricule:$("#cpMatricule").value.trim(),
-        id:ids[0], ids:ids, libelle:libelle});
+        id:ids[0], ids:ids, libelle:libelle, peutCreer:$("#cpDeleguer").checked});
       const q=MODIF; quitterModif();
       $("#cpEtat").innerHTML='Compte <b>'+ech(q)+'</b> modifié — '+ech(r.modifie.join(", "))+'.';
       listerComptes();
@@ -3791,7 +3795,8 @@ async function creerCompte(){
   }
   const charge={nom:$("#cpNom").value.trim(), login:$("#cpLogin").value.trim(),
     fonction:$("#cpFonction").value.trim(), matricule:$("#cpMatricule").value.trim(),
-    niveau:k, id:ids[0], ids:ids, libelle:libelle};
+    niveau:k, id:ids[0], ids:ids, libelle:libelle,
+    peutCreer:$("#cpDeleguer").checked};
   if(!charge.nom||!charge.login){$("#cpEtat").textContent="Nom et identifiant sont requis.";return;}
   $("#cpCreer").disabled=true; $("#cpEtat").textContent="Création…";
   try{
@@ -3900,6 +3905,7 @@ function modifierDepuisListe(login){
   } else if([...$("#cpEntite").options].some(o=>o.value===String(c.id))){
     $("#cpEntite").value=String(c.id);
   }
+  $("#cpDeleguer").checked=!!c.peutCreer;
   majBoutonCompte();
   $("#cpEtat").innerHTML='Modification du compte <b>'+ech(c.nom)+'</b> — corrigez les '+
     'champs ci-dessus, puis enregistrez.';
@@ -3910,6 +3916,7 @@ function quitterModif(){
   MODIF=null;
   $("#cpLogin").disabled=false; $("#cpLogin").value=""; $("#cpNom").value="";
   $("#cpFonction").value=""; $("#cpMatricule").value="";
+  $("#cpDeleguer").checked=false;
   CADR_SEL.clear();
   const q=$("#cpfQ"); if(q) q.value="";
   const z=$("#cpfZone"); if(z) z.value="";

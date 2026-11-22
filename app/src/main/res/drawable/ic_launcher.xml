@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="48" android:viewportHeight="48">
+    <path android:fillColor="#1B5E20" android:pathData="M24,1 A23,23 0 1,1 24,47 A23,23 0 1,1 24,1 Z" />
+    <!-- clavier doré -->
+    <path android:fillColor="#D4AF37" android:pathData="M8,22 L32,22 Q34,22 34,24 L34,36 Q34,38 32,38 L8,38 Q6,38 6,36 L6,24 Q6,22 8,22 Z" />
+    <path android:fillColor="#1B5E20" android:pathData="M9,25h3v3h-3z M14,25h3v3h-3z M19,25h3v3h-3z M24,25h3v3h-3z M29,25h2v3h-2z M9,30h3v3h-3z M14,30h3v3h-3z M19,30h3v3h-3z M24,30h3v3h-3z M29,30h2v3h-2z M12,34.5h16v2h-16z" />
+    <!-- souris blanche -->
+    <path android:fillColor="#FFFFFF" android:pathData="M37,9 Q43,9 43,16 L43,22 Q43,28 37,28 Q31,28 31,22 L31,16 Q31,9 37,9 Z" />
+    <path android:fillColor="#1B5E20" android:pathData="M36.4,11h1.2v6h-1.2z" />
+    <!-- étincelle magique -->
+    <path android:fillColor="#FFFFFF" android:pathData="M16,8 L17.2,11.8 L21,13 L17.2,14.2 L16,18 L14.8,14.2 L11,13 L14.8,11.8 Z" />
+</vector>

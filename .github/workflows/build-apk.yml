@@ -1,0 +1,71 @@
+name: Compiler BS MAGIC KEYBOARD
+
+on:
+  push:
+    branches: [bs-magic-keyboard]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Compilation de l'APK
+        run: |
+          gradle assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk BS_MAGIC_KEYBOARD.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: BS_MAGIC_KEYBOARD.apk
+
+  pc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Programme PC (Windows)
+        run: |
+          pip install pynput pyinstaller
+          pyinstaller --onefile --console --name BS_MAGIC_KEYBOARD_PC server/bs_magic_keyboard_pc.py
+          copy dist\BS_MAGIC_KEYBOARD_PC.exe BS_MAGIC_KEYBOARD_PC.exe
+        shell: cmd
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pc
+          path: BS_MAGIC_KEYBOARD_PC.exe
+
+  release:
+    needs: [apk, pc]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Publication (liens de téléchargement directs)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: bs-magic-keyboard-v1.0.${{ github.run_number }}
+          name: BS MAGIC KEYBOARD v1.0 (build ${{ github.run_number }})
+          target_commitish: bs-magic-keyboard
+          files: |
+            out/BS_MAGIC_KEYBOARD.apk
+            out/BS_MAGIC_KEYBOARD_PC.exe
+            server/bs_magic_keyboard_pc.py
+          body: |
+            📱 **BS_MAGIC_KEYBOARD.apk** — à installer sur le téléphone (Android 9 ou plus).
+            💻 **BS_MAGIC_KEYBOARD_PC.exe** — uniquement pour le mode Wi-Fi (Windows). Le mode Bluetooth n'a besoin d'aucun programme sur le PC.

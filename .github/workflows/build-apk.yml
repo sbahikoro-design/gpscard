@@ -1,0 +1,43 @@
+name: Compiler l'APK Échelle de mots
+
+on:
+  push:
+    branches: [echelle-de-mots]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Compilation
+        run: |
+          gradle assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk ECHELLE_DE_MOTS.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ECHELLE_DE_MOTS-apk
+          path: ECHELLE_DE_MOTS.apk
+
+      - name: Publication (lien de téléchargement direct)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: echelle-de-mots-v1.0.${{ github.run_number }}
+          name: Échelle de mots v1.0 (build ${{ github.run_number }})
+          target_commitish: echelle-de-mots
+          files: ECHELLE_DE_MOTS.apk
+          body: Jeu « Passe de ROCK à JEUX » — installer ECHELLE_DE_MOTS.apk.

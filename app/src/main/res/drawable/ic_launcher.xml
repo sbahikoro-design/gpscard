@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="48" android:viewportHeight="48">
+    <!-- fond nuit -->
+    <path android:fillColor="#1A1410" android:pathData="M24,1 A23,23 0 1,1 24,47 A23,23 0 1,1 24,1 Z" />
+    <!-- anneau terre cuite -->
+    <path android:fillColor="#00000000" android:strokeColor="#FF7A1A" android:strokeWidth="2"
+        android:pathData="M24,3 A21,21 0 1,1 24,45 A21,21 0 1,1 24,3 Z" />
+    <!-- bulle de message orange -->
+    <path android:fillColor="#FF7A1A"
+        android:pathData="M10,13 L28,13 Q31,13 31,16 L31,27 Q31,30 28,30 L17,30 L11,35 L12,30 L10,30 Q7,30 7,27 L7,16 Q7,13 10,13 Z" />
+    <!-- motif bogolan dans la bulle -->
+    <path android:fillColor="#1A1410" android:pathData="M11,18 L14,21 L11,24 Z M16,18 L19,21 L16,24 Z M21,18 L24,21 L21,24 Z M26,18 L28,20 L28,22 L26,24 Z" />
+    <!-- ondes sonores ambre -->
+    <path android:fillColor="#00000000" android:strokeColor="#FFC145" android:strokeWidth="2.4" android:strokeLineCap="round"
+        android:pathData="M34,17 Q37,21.5 34,26" />
+    <path android:fillColor="#00000000" android:strokeColor="#FFC145" android:strokeWidth="2.4" android:strokeLineCap="round"
+        android:pathData="M37.5,13.5 Q43,21.5 37.5,29.5" />
+</vector>

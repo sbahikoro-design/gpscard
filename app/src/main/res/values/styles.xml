@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.BsNotifSpeak" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/nuit</item>
+        <item name="android:statusBarColor">@color/nuit</item>
+        <item name="android:navigationBarColor">@color/nuit</item>
+        <item name="android:colorAccent">@color/orange</item>
+        <item name="android:colorPrimary">@color/orange</item>
+        <item name="android:colorControlActivated">@color/orange</item>
+    </style>
+</resources>

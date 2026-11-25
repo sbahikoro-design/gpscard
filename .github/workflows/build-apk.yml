@@ -1,0 +1,36 @@
+name: Compiler BS NOTIF SPEAK
+
+on:
+  push:
+    branches: [bs-notif-speak]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Compilation de l'APK
+        run: |
+          gradle assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk BS_NOTIF_SPEAK.apk
+      - name: Publication (lien de téléchargement direct)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: bs-notif-speak-v1.0.${{ github.run_number }}
+          name: BS NOTIF SPEAK v1.0 (build ${{ github.run_number }})
+          target_commitish: bs-notif-speak
+          files: BS_NOTIF_SPEAK.apk
+          body: |
+            📱 **BS_NOTIF_SPEAK.apk** — à installer sur le téléphone (Android 8 ou plus).
+            Au premier lancement : autoriser l'accès aux notifications, puis « Ne pas limiter la batterie ».

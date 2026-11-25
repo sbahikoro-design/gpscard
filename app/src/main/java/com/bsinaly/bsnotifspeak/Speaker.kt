@@ -27,6 +27,8 @@ class Speaker(private val ctx: Context, private val onReady: ((Speaker) -> Unit)
     private var currentEngine: String = ""
     var ready = false
         private set
+    private val waiting = ArrayList<Pair<String, Boolean>>()
+    private val priorityIds = HashSet<String>()
 
     private val attrs = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
@@ -51,6 +53,8 @@ class Speaker(private val ctx: Context, private val onReady: ((Speaker) -> Unit)
                     tts?.setOnUtteranceProgressListener(progress)
                     applySettings()
                     onReady?.invoke(this)
+                    val w = ArrayList(waiting); waiting.clear()
+                    for ((txt, prio) in w) if (prio) sayPriority(txt) else say(txt)
                 } else if (currentEngine.isNotEmpty()) {
                     // Moteur choisi introuvable : on revient au moteur par défaut
                     prefs.engine = ""
@@ -79,8 +83,14 @@ class Speaker(private val ctx: Context, private val onReady: ((Speaker) -> Unit)
         t.setPitch(prefs.pitch / 100f)
         val wanted = prefs.voice
         val v = if (wanted.isNotEmpty()) voices().firstOrNull { it.name == wanted } else null
+        val auto = if (v == null) voices()
+            .filter { Voices.isFrench(it) && !it.isNetworkConnectionRequired }
+            .sortedWith(compareBy<Voice>({ if (it.locale.country == "FR") 0 else 1 }, { -it.quality }))
+            .firstOrNull() else null
         if (v != null) {
             t.setVoice(v)
+        } else if (auto != null) {
+            t.setVoice(auto)
         } else {
             // Par défaut : une voix française si possible
             val fr = Locale.FRANCE
@@ -102,8 +112,9 @@ class Speaker(private val ctx: Context, private val onReady: ((Speaker) -> Unit)
 
     /** Fait parler le téléphone. [flush] = couper ce qui est en cours (bouton « Essayer »). */
     fun say(text: String, flush: Boolean = false) {
-        val t = tts ?: return
-        if (!ready || text.isBlank()) return
+        if (text.isBlank()) return
+        val t = tts
+        if (t == null || !ready) { synchronized(waiting) { waiting.add(text to false) }; return }
         if (pending.getAndIncrement() == 0 || flush) audio.requestAudioFocus(focus)
         if (flush) pending.set(1)
         val params = Bundle()
@@ -112,10 +123,30 @@ class Speaker(private val ctx: Context, private val onReady: ((Speaker) -> Unit)
         if (res != TextToSpeech.SUCCESS) done()
     }
 
+    /**
+     * Annonce prioritaire (paiements) : passe devant les messages ordinaires en cours,
+     * mais ne coupe jamais une autre annonce de paiement.
+     */
+    fun sayPriority(text: String) {
+        if (text.isBlank()) return
+        val t = tts
+        if (t == null || !ready) { synchronized(waiting) { waiting.add(text to true) }; return }
+        val mode = if (priorityIds.isEmpty()) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+        if (mode == TextToSpeech.QUEUE_FLUSH) pending.set(0)
+        if (pending.getAndIncrement() == 0) audio.requestAudioFocus(focus)
+        val id = "pay" + System.nanoTime()
+        synchronized(priorityIds) { priorityIds.add(id) }
+        if (t.speak(text, mode, Bundle(), id) != TextToSpeech.SUCCESS) { synchronized(priorityIds) { priorityIds.remove(id) }; done() }
+    }
+
     fun stop() {
         try { tts?.stop() } catch (_: Exception) {}
         pending.set(0)
         audio.abandonAudioFocusRequest(focus)
+    }
+
+    private fun forget(id: String?) {
+        if (id != null) synchronized(priorityIds) { priorityIds.remove(id) }
     }
 
     private fun done() {
@@ -127,11 +158,11 @@ class Speaker(private val ctx: Context, private val onReady: ((Speaker) -> Unit)
 
     private val progress = object : UtteranceProgressListener() {
         override fun onStart(utteranceId: String?) {}
-        override fun onDone(utteranceId: String?) = done()
+        override fun onDone(utteranceId: String?) { forget(utteranceId); done() }
         @Deprecated("Deprecated in Java")
-        override fun onError(utteranceId: String?) = done()
-        override fun onError(utteranceId: String?, errorCode: Int) = done()
-        override fun onStop(utteranceId: String?, interrupted: Boolean) { pending.set(0); audio.abandonAudioFocusRequest(focus) }
+        override fun onError(utteranceId: String?) { forget(utteranceId); done() }
+        override fun onError(utteranceId: String?, errorCode: Int) { forget(utteranceId); done() }
+        override fun onStop(utteranceId: String?, interrupted: Boolean) { forget(utteranceId) }
     }
 
     fun shutdown() {

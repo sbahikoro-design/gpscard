@@ -134,7 +134,7 @@ class MainActivity : Activity() {
             }
             redraw()
             c.addView(chips, matchWrap())
-            c.addView(tv("Ex. : « WhatsApp. Moussa dit : on se voit ce soir ? »", 12.5f, C.GREY).apply { setPadding(0, dp(8), 0, 0) })
+            c.addView(tv("Paiements (Wave, Orange Money, MTN, Moov, SMS) : toujours lus en premier et en court — « Paiement reçu : 5 000 francs, de Moussa. »", 12.5f, C.AMBRE).apply { setPadding(0, dp(8), 0, 0) })
             c.addView(slider("Longueur maximale lue", 60, 600, prefs.maxChars, { "$it caractères" }) { prefs.maxChars = it })
         })
 

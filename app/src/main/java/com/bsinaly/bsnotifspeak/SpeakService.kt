@@ -25,6 +25,7 @@ class SpeakService : NotificationListenerService() {
     private lateinit var prefs: Prefs
     private var speaker: Speaker? = null
     private val recent = LinkedHashMap<String, Long>()
+    private val lastByKey = LinkedHashMap<String, String>()
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
@@ -84,47 +85,68 @@ class SpeakService : NotificationListenerService() {
 
         val msg = extract(n) ?: return
         val app = appName(pkg)
-
-        // Anti-répétition : même message dans les 2 dernières minutes = ignoré
-        val sig = "$pkg|${msg.sender}|${msg.text}"
         val now = System.currentTimeMillis()
-        recent.entries.removeAll { now - it.value > 120_000 }
-        if (recent.containsKey(sig)) return
-        recent[sig] = now
+        recent.entries.removeAll { now - it.value > 300_000 }
+
+        // Même notification simplement mise à jour (WhatsApp, Wave…) : on ne relit pas
+        val norm = normalize("${msg.sender} ${msg.text}")
+        val key = sbn.key ?: "$pkg${sbn.id}"
+        if (lastByKey[key] == norm) return
+        if (n.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0 && lastByKey.containsKey(key)) return
+        lastByKey[key] = norm
+        if (lastByKey.size > 200) lastByKey.remove(lastByKey.keys.first())
+
+        // ── Argent reçu / envoyé : phrase courte, lue en priorité ──
+        val money = if (pkg in CHAT_APPS) null
+            else Money.parse(msg.text) ?: Money.parse("${msg.sender ?: ""} : ${msg.text}")
+        if (money != null) {
+            val sig = "money|${money.kind}|${money.amount}|${money.who}"
+            if (recent.containsKey(sig)) return
+            recent[sig] = now
+            val phrase = Money.phrase(money)
+            speaker().sayPriority(phrase)
+            log(app, phrase)
+            return
+        }
+
+        // ── Message ordinaire ──
+        // Anti-répétition : même texte dans les 5 dernières minutes = ignoré
+        if (recent.containsKey(norm)) return
+        recent[norm] = now
 
         val text = clean(msg.text)
-        val who = msg.sender
-        val where = msg.group
+        val who = msg.sender?.let { fixCaps(stripNumbers(it)).trim() }?.takeIf { it.isNotBlank() }
+        val where = msg.group?.let { fixCaps(it) }
         val phrase = when (prefs.readMode) {
-            1 -> listOfNotNull(who?.let { if (where != null) "$it, dans $where" else it }, text)
-                .joinToString(" : ")
+            1 -> listOfNotNull(who, text).joinToString(" : ")
             2 -> buildString {
-                append("Nouveau message ").append(app)
+                append("Message ").append(app)
                 if (who != null) append(" de ").append(who)
-                if (where != null) append(", dans ").append(where)
             }
             else -> buildString {
                 append(app).append(". ")
                 if (who != null) {
                     append(who)
                     if (where != null) append(", dans ").append(where)
-                    append(" dit : ")
+                    append(" : ")
                 }
                 append(text)
             }
         }
         if (phrase.isBlank()) return
-
-        val sp = speaker ?: Speaker(this).also { speaker = it }
-        if (sp.ready) sp.say(phrase)
-        else {
-            // Le moteur se prépare encore (juste après l'allumage) : on réessaie un peu plus tard
-            android.os.Handler(mainLooper).postDelayed({ speaker?.say(phrase) }, 2500)
-        }
-
-        val hour = SimpleDateFormat("HH:mm", Locale.FRANCE).format(Date())
-        prefs.addHistory("$hour · $app · ${who ?: ""}${if (who != null) " : " else ""}${text.take(90)}")
+        speaker().say(phrase)
+        log(app, phrase)
     }
+
+    private fun speaker(): Speaker = speaker ?: Speaker(this).also { speaker = it }
+
+    private fun log(app: String, phrase: String) {
+        val hour = SimpleDateFormat("HH:mm", Locale.FRANCE).format(Date())
+        prefs.addHistory("$hour · $app · ${phrase.take(110)}")
+    }
+
+    private fun normalize(s: String): String =
+        s.lowercase(Locale.FRENCH).replace(Regex("\\s+"), " ").trim()
 
     private fun canSpeakNow(): Boolean {
         val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -214,22 +236,39 @@ class SpeakService : NotificationListenerService() {
             .replace(Regex("\\s*\\(\\d+\\)$"), "")
             .trim()
 
-    /** Rend le texte agréable à écouter : liens, émojis, longueur. */
+    /** Rend le texte agréable à écouter : liens, émojis, numéros, dates, MAJUSCULES, longueur. */
     private fun clean(raw: String): String {
         var s = raw
             .replace(Regex("https?://\\S+|www\\.\\S+"), " un lien ")
             .replace(Regex("[\\p{So}\\p{Cn}\\p{Cs}\\uFE0F\\u200D]"), " ")
+        s = stripNumbers(s)
+        s = fixCaps(s)
+            .replace(Regex("\\s+([,.!?:;])"), "$1")
             .replace(Regex("\\s+"), " ")
             .trim()
         val max = prefs.maxChars
         if (s.length > max) {
             val cut = s.substring(0, max)
             val sp = cut.lastIndexOf(' ')
-            s = (if (sp > max / 2) cut.substring(0, sp) else cut) + "… message tronqué."
+            s = (if (sp > max / 2) cut.substring(0, sp) else cut) + "…"
         }
-        if (s.isBlank()) s = "un émoji ou une pièce jointe"
+        if (s.isBlank()) s = "pièce jointe"
         return s
     }
+
+    /** Retire numéros de téléphone, références, dates et heures (sinon la voix les épelle). */
+    private fun stripNumbers(t: String): String = t
+        .replace(Regex("\\(\\s*\\+?[\\d .-]{6,}\\)"), " ")
+        .replace(Regex("(?<!\\d)(?:\\+?225[ .-]?)?0\\d(?:[ .-]?\\d{2}){4}(?!\\d)"), " ")
+        .replace(Regex("\\+?\\d{9,}"), " ")
+        .replace(Regex("\\b\\d{1,2}[/.-]\\d{1,2}[/.-]\\d{2,4}\\b"), " ")
+        .replace(Regex("\\b(à|a)?\\s*\\d{1,2}\\s?[hH:]\\s?\\d{2}\\b"), " ")
+        .replace(Regex("\\b(?=[A-Z0-9]*\\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{6,}\\b"), " ")
+        .replace(Regex("\\(\\s*\\)"), " ")
+
+    /** « BAHIKORO SINALY » → « Bahikoro Sinaly » : sinon la voix lit lettre par lettre. */
+    private fun fixCaps(t: String): String =
+        Regex("\\b[A-ZÀ-ÖØ-Þ][A-ZÀ-ÖØ-Þ'’-]{2,}\\b").replace(t) { m -> Money.niceWord(m.value) }
 
     private fun appName(pkg: String): String = try {
         val info = packageManager.getApplicationInfo(pkg, 0)
@@ -238,6 +277,9 @@ class SpeakService : NotificationListenerService() {
 
     companion object {
         @Volatile var running = false
+
+        /** Discussions : « je t'ai envoyé 5000F » n'est pas un vrai paiement. */
+        private val CHAT_APPS = setOf("com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "com.facebook.orca")
 
         private val SKIP_CATEGORIES = setOf(
             Notification.CATEGORY_CALL, Notification.CATEGORY_TRANSPORT,

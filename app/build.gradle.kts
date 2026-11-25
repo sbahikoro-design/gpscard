@@ -11,14 +11,22 @@ android {
         applicationId = "com.bsinaly.bsnotifspeak"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+    signingConfigs {
+        create("bs") {
+            // Clé fixe : les prochaines versions s'installeront par-dessus sans désinstaller
+            storeFile = file("bs-notif-speak.jks")
+            storePassword = "bsinaly2026"
+            keyAlias = "bsnotifspeak"
+            keyPassword = "bsinaly2026"
+        }
     }
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signée avec la clé debug pour pouvoir l'installer directement
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("bs")
         }
     }
     compileOptions {

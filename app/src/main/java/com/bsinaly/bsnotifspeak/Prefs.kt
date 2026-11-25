@@ -44,7 +44,7 @@ class Prefs(ctx: Context) {
 
     /** Ce qu'on lit : 0 = appli + expéditeur + message, 1 = expéditeur + message, 2 = annonce seulement */
     var readMode: Int
-        get() = sp.getInt("read_mode", 0)
+        get() = sp.getInt("read_mode", 1)
         set(v) = sp.edit().putInt("read_mode", v).apply()
 
     var skipDuringCall: Boolean
@@ -106,7 +106,8 @@ class Prefs(ctx: Context) {
             "com.whatsapp", "com.whatsapp.w4b",
             "com.google.android.apps.messaging", "com.samsung.android.messaging",
             "com.android.mms", "com.transsion.message", "com.android.messaging",
-            "org.telegram.messenger", "com.facebook.orca"
+            "org.telegram.messenger", "com.facebook.orca",
+            "com.wave.personal", "com.wave.business"
         )
     }
 }

@@ -1,0 +1,12 @@
+[
+["s1","Bonjour ! Je suis Bé Sinali. Avec Bé Ès Alerte Route, votre téléphone vous prévient par un bip, avant chaque obstacle sur votre trajet."],
+["s2","D'abord, installez l'application. Touchez Démarrer la surveillance. Puis acceptez la localisation, les notifications, et choisissez : ne pas limiter la batterie."],
+["s3","Premier trajet. Choisissez le type d'obstacle : dos d'âne, nid de poule, virage, pont. Puis touchez le gros bouton jaune, Obstacle ici, au moment où vous passez dessus."],
+["s4","Sans quitter la route des yeux, appuyez simplement sur le bouton volume moins. Ou bien touchez Obstacle ici, directement dans la notification."],
+["s5","Aux trajets suivants, touchez seulement Démarrer. En approchant d'un obstacle : trois bips, une vibration, et une voix vous prévient."],
+["s5v","Attention, dos d'âne à cent cinquante mètres.","f2",160,55],
+["s5b","Et à moins de trente-cinq mètres, les bips deviennent rapides. Ralentissez !"],
+["s6","L'application est intelligente. Plus vous roulez vite, plus l'alerte arrive tôt. Un obstacle déjà dépassé ne sonne pas. Et pointer deux fois le même endroit affine sa position, sans doublon."],
+["s7","Dans Mes obstacles, changez le type ou la distance d'alerte, coupez le son d'un obstacle, voyez-le sur la carte, ou partagez votre liste avec d'autres chauffeurs."],
+["s8","Pour votre sécurité, faites pointer par un passager. Bé Ès Alerte Route : roulez prévenu, roulez serein !"]
+]

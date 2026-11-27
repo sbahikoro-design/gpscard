@@ -1,0 +1,24 @@
+name: Voix de la vidéo BS ALERTE ROUTE
+on:
+  push:
+    branches: [bs-alerte-route-voix]
+    paths: [lines.json, gen.py, .github/workflows/voix.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  voix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install edge-tts==7.0.2
+      - run: python gen.py && ls -la voix
+      - name: Enregistrer les voix dans la branche
+        run: |
+          git config user.name "BSINALY"
+          git config user.email "bsinaly@users.noreply.github.com"
+          git add voix
+          git commit -m "Voix générées"
+          git push

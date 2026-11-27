@@ -1,0 +1,36 @@
+name: Compiler BS ALERTE ROUTE
+
+on:
+  push:
+    branches: [bs-alerte-route]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Compilation de l'APK
+        run: |
+          gradle assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk BS_ALERTE_ROUTE.apk
+      - name: Publication (lien de téléchargement direct)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: bs-alerte-route-v1.0.${{ github.run_number }}
+          name: BS ALERTE ROUTE v1.0 (build ${{ github.run_number }})
+          target_commitish: bs-alerte-route
+          files: BS_ALERTE_ROUTE.apk
+          body: |
+            📱 **BS_ALERTE_ROUTE.apk** — à installer sur le téléphone (Android 8 ou plus).
+            Au premier lancement : autoriser la localisation (« Pendant l'utilisation ») et les notifications, puis « Ne pas limiter la batterie ».

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="asphalte">#FF15171A</color>
+    <color name="jaune">#FFFFD000</color>
+    <string name="app_name">BS ALERTE ROUTE</string>
+    <style name="Theme.BsAlerteRoute" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/asphalte</item>
+        <item name="android:statusBarColor">@color/asphalte</item>
+        <item name="android:navigationBarColor">@color/asphalte</item>
+        <item name="android:colorAccent">@color/jaune</item>
+        <item name="android:colorPrimary">@color/jaune</item>
+        <item name="android:colorControlActivated">@color/jaune</item>
+    </style>
+</resources>

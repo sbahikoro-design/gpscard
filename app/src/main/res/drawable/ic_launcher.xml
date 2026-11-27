@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="48" android:viewportHeight="48">
+    <!-- fond asphalte -->
+    <path android:fillColor="#15171A" android:pathData="M24,1 A23,23 0 1,1 24,47 A23,23 0 1,1 24,1 Z" />
+    <!-- route en perspective -->
+    <path android:fillColor="#2B2F35" android:pathData="M19,10 L29,10 L40,44 L8,44 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M23.4,14 L24.6,14 L25,20 L23,20 Z M22.8,24 L25.2,24 L25.8,32 L22.2,32 Z M22,36 L26,36 L26.6,44 L21.4,44 Z" />
+    <!-- panneau triangle danger -->
+    <path android:fillColor="#FFD000" android:strokeColor="#E10600" android:strokeWidth="2.2"
+        android:strokeLineJoin="round"
+        android:pathData="M24,4 L37,27 L11,27 Z" />
+    <path android:fillColor="#15171A" android:pathData="M22.8,11 L25.2,11 L24.7,20 L23.3,20 Z M24,21.5 A1.4,1.4 0 1,1 24,24.3 A1.4,1.4 0 1,1 24,21.5 Z" />
+</vector>
